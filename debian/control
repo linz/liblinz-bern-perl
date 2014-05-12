@@ -1,0 +1,22 @@
+Source: liblinz-bern-perl
+Section: perl
+Priority: optional
+Maintainer: Chris Crook <ccrook@linz.govt.nz>
+Build-Depends: debhelper (>= 8.0.0)
+Standards-Version: 3.9.2
+Homepage: 
+
+Package: liblinz-bern-perl
+Architecture: all
+Depends: ${misc:Depends},
+    libconfig-general-perl,
+    libdbd-sqlite3-perl,
+    libdbi-perl,
+    liblinz-gnss-perl
+Description: Perl modules for LINZ Bernese utilities
+ LINZ::BERN support modules for Bernese utilities
+ .
+ Provides functions for processing some of the Bernese files, 
+ for creating campaigns, and for running Bernese PCFs
+
+    

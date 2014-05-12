@@ -1,0 +1,185 @@
+#!/usr/bin/perl
+use strict;
+
+=head1 create_bernese_campaign
+
+Creates a new bernese campaign, adds specified rinex files and creates a session
+spanning their total start-end time.  Generates an empty coordinate file called 
+APRIORI.CRD. 
+
+Synax: create_bernese_campaign [options] campaign rinex_file rinex_file ..
+
+Options:
+
+=over
+
+=item -o
+
+Allow overwriting an existing campaign directory. (See notes below about campaign names).
+
+=item -u 
+
+Set the user menu to reference the selected campaign. Also updates the list
+of campaigns.
+
+=item -U
+
+Reset the user menu to reference an existing campaign.  This ignores any
+rinex files listed
+
+=item -r 
+
+Rename rinex files to U### to avoid potential conflicts with reference stations
+
+=item -R
+
+Rename rinex files to U### only if they confict with the names of reference stations 
+derived from the GETDATA configuration
+
+=item -s
+
+Use standard daily sessions rather than creating a fixed session for the duration
+of the rinex files
+
+=item -S
+
+Use standard daily sessions rather than creating a fixed session for the duration
+of the rinex files
+
+
+=item -x pcfname
+
+Runs the specified PCF file after the job has been created.  If a PCF is
+defined then the command line can also include var=value to set PCF variables.
+
+=back
+
+The campaign name can end with a # character to automatically create a new
+campaign name replacing # with a number.
+
+The script will create an apriori coordinate file called APR$S+0.CRD, 
+a stations file called STATIONS.STA, and an abbreviations file called
+ABBREV.ABB.  It will also create a file SETTINGS.JSON in the OUT directory
+with information about how the job is configured.
+
+It also normallizes the antenna type to include radome NONE if it is
+omitted.
+
+=cut
+
+use Getopt::Std;
+use LINZ::BERN::BernUtil;
+
+my %opts;
+getopts("ouUrRsSx:",\%opts);
+
+my $minargv = $opts{U} ? 1 : 2;
+
+@ARGV >= $minargv || die <<EOS;
+
+Syntax: create_bernese_campaign.pl [options] campaign rinex_file [rinex_file ...]
+
+Creates a new bernese campaign, adds specified rinex files and creates a session
+spanning their total start-end time.  Generates an empty coordinate file called 
+APRIORI.CRD. 
+
+Optionally sets up the user menu items for using the campaign.
+
+Options:
+
+   -u       Set up user menu to activate the campaign
+   -U       Reset menu for selected campaign (rinex files are ignored)
+   -r       Rename rinex files to U###...
+   -R       Rename rinex files to U### if they conflict with reference stations
+   -s       Create a standard daily session file rather than a fixed session file
+   -S       Create a standard hourly session file rather than a fixed session file
+   -x       Execute the specified PCF
+   -o       Overwrite an existing campaign directory
+
+
+EOS
+
+my $jobid=shift(@ARGV);
+my @rinexfiles=grep {$_ !~ /\=/} @ARGV;
+my @pcfopts=grep {/\=/} @ARGV;
+
+eval
+{
+    LINZ::BERN::BernUtil::SetBerneseEnv();
+
+    if( $opts{U})
+    {
+        require LINZ::GNSS::DataCenter;
+        LINZ::BERN::BernUtil::SetUserCampaign($jobid);
+        exit();
+    }
+    my $codes=0;
+    if( $opts{R} )
+    {
+        $codes=LINZ::GNSS::DataCenter::AvailableStations();
+    }
+    die "No rinex files specified\n" if ! @rinexfiles;
+    my $sesstype=$opts{s} ? 1 : $opts{S} ? 2 : 0;
+    my $campaign=LINZ::BERN::BernUtil::CreateCampaign(
+        $jobid,
+        RinexFiles=>\@rinexfiles,
+        RenameRinex=>($opts{r} || $opts{R}) ? 'U###' : '',
+        RenameCodes=>$codes,
+        CrdFile=>'APR$S+0',
+        AbbFile=>'ABBREV',
+        StaFile=>'STATIONS',
+        AddNoneRadome=>1,
+        MakeSessionFile=>1,
+        UseStandardSessions=>$sesstype,
+        SettingsFile=>1,
+        SetupUserMenu=>$opts{u},
+        UpdateCampaignList=>$opts{u},
+        CanOverwrite=>$opts{o},
+    );
+    if( $campaign )
+    {
+        foreach my $k (sort keys %$campaign )
+        {
+            print "$k: $campaign->{$k}\n" if ! ref $campaign->{$k};
+        }
+
+        my $pcf=$opts{x};
+        if( $pcf )
+        {
+            # Some variables required by the RUN_PNZ PCF script
+            my $vars=$campaign->{variables};
+
+            # For the PositioNZ RUN_PNZ PCF there are some variable
+            # we want to set
+            if( $pcf eq 'RUN_PNZ' )
+            {
+                my $usrmrk=$campaign->{marks}->[0];
+                $vars->{V_USRMRK}=$campaign->{marks}->[0];
+                $vars->{V_ORBTYPE}='RAPID';
+                $vars->{V_ERPTYPE}='RAPID';
+            }
+            # Set user specified options
+            foreach my $opt (@pcfopts)
+            {
+                my($key,$value)=split(/\=/,$opt,2);
+                $vars->{$key}=$value;
+            }
+            my $status=LINZ::BERN::BernUtil::RunPcf($campaign,$pcf);
+            if( $status )
+            {
+                print "BPE stopped with errors\n";
+            }
+            else
+            {
+                print "BPE completed successfully\n";
+            }
+        }
+    }
+};
+if( $@ )
+{
+    print "Unable to create job:\n$@\n";
+}
+
+
+

@@ -1,0 +1,13 @@
+bin
+bin/create_bernese_campaign
+Build.PL
+lib
+lib/LINZ
+lib/LINZ/BERN
+lib/LINZ/BERN/SessionFile.pm
+lib/LINZ/BERN/CrdFile.pm
+lib/LINZ/BERN/Environment.pm
+lib/LINZ/BERN/BernUtil.pm
+lib/LINZ/BERN/PcfFile.pm
+LICENSE
+MANIFEST
