@@ -7,7 +7,7 @@ Package provides utility functions to support bern processing.
 use strict;
 
 package LINZ::BERN::BernUtil;
-our $VERSION='1.0';
+our $VERSION='1.1.0';
 
 use LINZ::BERN::SessionFile;
 use LINZ::BERN::CrdFile;
@@ -497,6 +497,20 @@ Additional options.  Currently supported are:
 
 =back
 
+This adds two elements to the campaign hash:
+
+=over
+
+=item runstatus
+
+The status returned by LINZ::BERN::RunPcfStatus
+
+=item bernese_status
+
+The status returned by the startBPE object ERROR_STATUS variable
+
+=back
+
 =cut
 
 sub RunPcf
@@ -537,7 +551,137 @@ sub RunPcf
     $bpe->run();
 
     $campaign->{bernese_status}=$bpe->{ERROR_STATUS};
+    my $result=LINZ::BERN::BernUtil::RunPcfStatus($campaign);
+    $campaign->{runstatus}=$result;
     return $campaign->{bernese_status};
+}
+
+=head2 $result=LINZ::BERN::BernUtil::RunPcfStatus($campaign)
+
+Attempt to find the information about script failure from the BPE log files
+
+The parameter can be either a campaign returned by LINZ::BERN::BernUtil::CreateCampaign,
+or the name of a campaign directory.
+
+Returns a hash with the following possible keys:
+
+=over
+
+=item status
+
+The status of the run, OK or ERROR
+
+=item fail_pid
+
+The pid of the step at which the script failed
+
+=item fail_script
+
+The name of the script in which the failure occured
+
+=item fail_prog
+
+The program in which the failure occurred
+
+=item fail_message
+
+The message returned by the program when it failed.
+
+=back
+
+The fail_prog and fail_message are interpreted from the script log file.
+
+=cut
+
+
+sub RunPcfStatus
+{
+    my($campaigndir)=@_;
+    if( ref($campaigndir) )
+    {
+        $campaigndir=$campaigndir->{campaigndir};
+    }
+    $campaigndir=$ENV{P}."/$campaigndir" if $campaigndir=~/^\w+$/ && exists $ENV{P};
+    my $campdirname=$campaigndir;
+    $campdirname=~ s/.*[\\\/]//;
+    $campdirname='${P}/'.$campdirname;
+
+    my $bpedir=$campaigndir.'/BPE';
+    croak("Campaign BPE directory $campdirname/BPE is missing\n") if ! -e $bpedir;
+
+    my %logs=();
+    my @out=();
+    opendir(my $bd,$bpedir) || return;
+    foreach my $f (readdir($bd))
+    {
+        my $bf=$bpedir.'/'.$f;
+        push(@out,$bf) if -f $bf && $f=~/\.OUT$/;
+        $logs{$1}=$bf if -f $bf && $f=~ /_(\d\d\d_\d\d\d).LOG$/;
+    }
+    closedir($bd);
+    @out = sort { -M $a <=> -M $b } @out;
+
+    # Read the run output directory
+
+    croak("Cannot find BPE output file in $bpedir\n") if ! @out;
+
+    my $sysout=$out[0];
+    open(my $sof,"<$sysout") || croak("Cannot open BPE output file $sysout\n");
+    my $header=<$sof>;
+    my $spacer=<$sof>;
+    croak("$sysout doesn't seem to be a BPE SYSOUT file\n") 
+        if $header !~ /^\s*time\s+sess\s+pid\s+script\s+option\s+status\s*$/i;
+
+    my $failrun='';
+    my $runstatus='OK';
+    while( my $line=<$sof> )
+    {
+        my ($run,$status) = split(/\s+\:\s+/,$line);
+        next if $status !~ /^script\s+finished\s+(\w+)/i;
+        $runstatus=$1;
+        if( $runstatus ne 'OK')
+        {
+            $failrun=$run;
+            last;
+        }
+    }
+    close($sof);
+
+    my $result={ status=>$runstatus };
+
+    if( $runstatus ne 'OK' )
+    {
+        my($date,$time,$sess,$pidr,$script,$option)=split(' ',$failrun);
+        my $pid=$1 if $pidr=~/^(\d+)/;
+        my $lfile=$logs{$pidr};
+        my $prog='';
+        my $failure='';
+        if( $lfile && open( my $lf, "<$lfile"))
+        {
+            while(my $line=<$lf>)
+            {
+                $prog=$1 if $line =~ /Call\s+to\s+(\w+)\s+failed\:/i;
+                if( $line =~ /^\s*\*\*\*\s.*?\:\s*(.*?)\s*$/ )
+                {
+                    $failure .= '/ '.$1;
+                    while( $line = <$lf> )
+                    {
+                        last if $line =~ /^\s*$/;
+                        $line=~ s/^\s*//;
+                        $line=~ s/\s*$//;
+                        $failure .= ' '.$line;
+                    }
+                    last if ! $line;
+                }
+            }
+        }
+        $result->{fail_pid}=$pid;
+        $result->{fail_script}=$script;
+        $result->{fail_prog}=$prog;
+        $result->{fail_message}=substr($failure,2);
+    }
+
+    return $result;
 }
 
 =head2 LINZ::BERN::BernUtil::SetUserCampaign($job,$campaign)
