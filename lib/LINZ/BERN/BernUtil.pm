@@ -536,8 +536,8 @@ sub RunPcf
     my $bpe=new startBPE(%{$campaign->{variables}});
     $bpe->{BPE_CAMPAIGN}=$campaign->{CAMPAIGN};
     $bpe->{CLIENT_ENV}=$options{CLIENT_ENV} if exists $options{CLIENT_ENV};
-    $bpe->{CPU_FILE}=$options{CPU_FILE} if exists $options{CPU_FILE};
-    $bpe->{S_CPU_FILE}=$options{CPU_FILE} if exists $options{CPU_FILE};
+    $bpe->{CPU_FILE}=$options{CPU_FILE} || 'USER';
+    $bpe->{S_CPU_FILE}=$options{CPU_FILE} || 'USER';
     $bpe->{PCF_FILE}=$pcf;
     $bpe->{SESSION}=$campaign->{SES_INFO};
     $bpe->{YEAR}=$campaign->{YR4_INFO};
