@@ -246,7 +246,8 @@ sub CreateCampaign
         CAMPAIGN=>"\${P}/$job", 
         variables=>{}, 
         createtime=>$now, 
-        campaigndir=>$jobdir 
+        campaigndir=>$jobdir,
+        runstatus=>{},
     }; 
     my $existing = -d $jobdir;
 
