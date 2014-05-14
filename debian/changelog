@@ -1,3 +1,11 @@
+liblinz-bern-perl (1.1.0-1) precise; urgency=low
+
+  * Added RunPcfStatus function
+  * Changing default CPU_FILE to USER.CPU to match installed file
+  * Ensure campaign always has a runstatus hash
+
+ -- Chris Crook <ccrook@linz.govt.nz>  Wed, 14 May 2014 15:30:27 +1200
+
 liblinz-bern-perl (1.0-1.1) stable; urgency=low
 
   * Adding option to BernUtil for overwriting an existing campaign
