@@ -368,12 +368,18 @@ sub CreateCampaign
                         }
                     }
 
+                    my $anttype=sprintf("%-20.20s",$rf->anttype);
                     if( $options{AddNoneRadome} )
                     {
-                        my $anttype=sprintf("%-20.20s",$rf->anttype);
                         substr($anttype,16,4)='NONE' if substr($anttype,16,4) eq '    ';
                         $rf->anttype($anttype);
                     }
+
+                    my $dehn=$rf->delta_hen;
+                    my $antheight=0.0;
+                    $antheight=$dehn->[0] if ref($dehn);
+                    
+                    my $rectype=$rf->rectype;
 
                     $rf->markname($rawcode);
                     $rf->write("$jobdir/RAW/$rawname");
@@ -382,7 +388,10 @@ sub CreateCampaign
                         srcfilename=>$srcfile,
                         srcmarkname=>$srccode,
                         filename=>$rawname,
-                        markname=>$rawcode
+                        markname=>$rawcode,
+                        anttype=>$anttype,
+                        antheight=>$antheight,
+                        rectype=>$rectype,
                         }
                         );
                     push(@marks,$rf->markname);
