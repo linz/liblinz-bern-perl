@@ -1,3 +1,11 @@
+liblinz-bern-perl (1.2.0-1) precise; urgency=low
+
+  * debian packaging
+  * Adding antennae and receiver information to settings
+  * Changing src... to orig_...
+
+ -- Chris Crook <ccrook@linz.govt.nz>  Sat, 24 May 2014 14:16:00 +1200
+
 liblinz-bern-perl (1.1.0-1) precise; urgency=low
 
   * Added RunPcfStatus function
