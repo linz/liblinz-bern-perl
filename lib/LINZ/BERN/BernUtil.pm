@@ -206,7 +206,7 @@ An array of mark codes
 
 =item files
 
-An array of file definitions, each a hash with elements srcfilename, srcmarkname, 
+An array of file definitions, each a hash with elements orig_filename, orig_markname, 
 filename, markname defining the input file and mark id, and the possibly renamed 
 values used in the campaign directories.
 
@@ -385,8 +385,8 @@ sub CreateCampaign
                     $rf->write("$jobdir/RAW/$rawname");
 
                     push(@files, {
-                        srcfilename=>$srcfile,
-                        srcmarkname=>$srccode,
+                        orig_filename=>$srcfile,
+                        orig_markname=>$srccode,
                         filename=>$rawname,
                         markname=>$rawcode,
                         anttype=>$anttype,
