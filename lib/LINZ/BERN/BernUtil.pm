@@ -24,6 +24,12 @@ our $DefaultLoadGps='/opt/bernese52/GPS/EXE/LOADGPS.setvar';
 our $AntennaFile='PCV_COD.I08';
 our $ReceiverFile='RECEIVER.';
 
+our $LoadedAntFile='';
+our $LoadedAntennae=[];
+
+our $LoadedRecFile='';
+our $LoadedReceivers=[];
+
 =head2 LINZ::BERN::BernUtil::SetBerneseEnv($loadgps,%override)
 
 Script to read a Bernese LOADGPS.setvar script and set the corresponding
@@ -847,28 +853,83 @@ sub AntennaList
     die "BERN environment not set\n" if ! $brndir || ! -d $gendir;
 
     my $antfile=$gendir.'/'.$AntennaFile;
-
-    open(my $af,"<$antfile") || die "Cannot find antenna file $antfile\n";
-
-    my $antennae=[];
-    while(my $line=<$af>)
+    if( $antfile ne $LoadedAntFile )
     {
-        next if $line !~ /^ANTENNA\/RADOME\s+TYPE\s+NUMBER/;
-        $line=<$af>;
-        $line=<$af> if $line;
-        last if ! $line;
-        my $ant=substr($line,0,20);
-        next if $ant !~ /\S/;
-        next if $ant =~ /^MW\s+BLOCK/;
-        next if $ant =~ /^MW\s+GEO/;
-        next if $ant =~ /^MW\s+GLONASS/;
-        next if $ant =~ /^SLR\s+REFL/;
-        push(@$antennae,$ant);
-    }
-    close($af);
+        $LoadedAntennae=[];
+        open(my $af,"<$antfile") || die "Cannot find antenna file $antfile\n";
 
-    return wantarray ? @$antennae : $antennae;
+        while(my $line=<$af>)
+        {
+            next if $line !~ /^ANTENNA\/RADOME\s+TYPE\s+NUMBER/;
+            $line=<$af>;
+            $line=<$af> if $line;
+            last if ! $line;
+            my $ant=substr($line,0,20);
+            next if $ant !~ /\S/;
+            next if $ant =~ /^MW\s+BLOCK/;
+            next if $ant =~ /^MW\s+GEO/;
+            next if $ant =~ /^MW\s+GLONASS/;
+            next if $ant =~ /^SLR\s+REFL/;
+            push(@$LoadedAntennae,$ant);
+        }
+        close($af);
+    }
+    my @antennae=@$LoadedAntennae;
+
+    return wantarray ? @antennae : \@antennae;
 }
+
+=head2 $antenna=LINZ::BERN::BernUtil::BestMatchingAntenna($ant)
+
+Return the best matching antenna to the supplied antenna.
+The best match is based upon the maximum number of matched leading characters,
+and the first in alphabetical order if there is a tie.  The radome
+supplied is preferred, otherwise a match with none is used.
+
+=cut
+
+sub BestMatchingAntenna
+{
+    my($ant)=@_;
+    $ant=uc($ant);
+    $ant=substr($ant.(' 'x20),0,20);
+    my $radome=substr($ant,16);
+    $ant=substr($ant,0,16);
+    $radome = 'NONE' if $radome eq '    ';
+
+    my %validAnt = map {$_=>1} AntennaList();
+    return $ant.$radome if exists $validAnt{$ant.$radome};
+    return $ant.'NONE' if exists $validAnt{$ant.'NONE'};
+
+    # Build a regular expression to match as much of
+    # the antenna string as possible;
+
+    my $repre='^(';
+    my $resuf=')';
+    foreach my $c (split(//,$ant))
+    {
+        $repre .= '(?:'.quotemeta($c);
+        $resuf = ')?'.$resuf;
+    }
+    my $re=$repre.$resuf;
+
+    my $maxmatch=-1;
+    my $matchant='';
+    foreach my $vldant (sort keys %validAnt)
+    {
+        $vldant=~/$re/;
+        my $nmatch=length($1)*2;
+        $nmatch++ if substr($vldant,16) eq $radome;
+        if( $nmatch > $maxmatch )
+        {
+            $maxmatch=$nmatch;
+            $matchant=$vldant;
+        }
+    }
+    return $matchant;
+}
+
+
 
 =head2 $receivers=LINZ::BERN::BernUtil::ReceiverList;
 
@@ -883,25 +944,75 @@ sub ReceiverList
     die "BERN environment not set\n" if ! $brndir || ! -d $gendir;
 
     my $recfile=$gendir.'/'.$ReceiverFile;
-
-    open(my $af,"<$recfile") || die "Cannot find receiver file $recfile\n";
-
-    my $receivers=[];
-    my $nskip=6;
-    my $line;
-    while( $nskip-- && ($line=<$af>)){};
-
-    while($line=<$af>)
+    if( $recfile ne $LoadedRecFile )
     {
-        last if $line=~/^REMARK\:/;
-        my $rec=substr($line,0,20);
-        next if $rec !~ /\S/;
-        $rec =~ /\s*$/;
-        push(@$receivers,$rec);
-    }
-    close($af);
+        $LoadedReceivers=[];
 
-    return wantarray ? @$receivers : $receivers;
+        open(my $af,"<$recfile") || die "Cannot find receiver file $recfile\n";
+
+        my $receivers=[];
+        my $nskip=6;
+        my $line;
+        while( $nskip-- && ($line=<$af>)){};
+
+        while($line=<$af>)
+        {
+            last if $line=~/^REMARK\:/;
+            my $rec=substr($line,0,20);
+            next if $rec !~ /\S/;
+            $rec =~ /\s*$/;
+            push(@$LoadedReceivers,$rec);
+        }
+        close($af);
+    }
+
+    my @receivers=@$LoadedReceivers;
+
+    return wantarray ? @receivers : \@receivers;
+}
+
+=head2 $receiver=LINZ::BERN::BernUtil::BestMatchingReceiver($rec)
+
+Return the best matching receiver to the supplied receiver.
+The best match is based upon the maximum number of matched leading characters,
+and the first in alphabetical order if there is a tie.  
+
+=cut
+
+sub BestMatchingReceiver
+{
+    my($rec)=@_;
+    $rec=uc($rec);
+    $rec=~ s/\s+$//;
+
+    my %validRec = map {$_=>1} ReceiverList();
+    return $rec if exists $validRec{$rec};
+
+    # Build a regular expression to match as much of
+    # the antenna string as possible;
+
+    my $repre='^(';
+    my $resuf=')';
+    foreach my $c (split(//,$rec))
+    {
+        $repre .= '(?:'.quotemeta($c);
+        $resuf = ')?'.$resuf;
+    }
+    my $re=$repre.$resuf;
+
+    my $maxmatch=-1;
+    my $matchrec='';
+    foreach my $vldrec (sort keys %validRec)
+    {
+        $vldrec=~/$re/;
+        my $nmatch=length($1);
+        if( $nmatch > $maxmatch )
+        {
+            $maxmatch=$nmatch;
+            $matchrec=$vldrec;
+        }
+    }
+    return $matchrec;
 }
 
 
