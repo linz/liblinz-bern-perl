@@ -960,7 +960,7 @@ sub ReceiverList
             last if $line=~/^REMARK\:/;
             my $rec=substr($line,0,20);
             next if $rec !~ /\S/;
-            $rec =~ /\s*$/;
+            $rec =~ s/\s*$//;
             push(@$LoadedReceivers,$rec);
         }
         close($af);
@@ -1004,6 +1004,7 @@ sub BestMatchingReceiver
     my $matchrec='';
     foreach my $vldrec (sort keys %validRec)
     {
+        $vldrec=~s/
         $vldrec=~/$re/;
         my $nmatch=length($1);
         if( $nmatch > $maxmatch )
@@ -1016,6 +1017,45 @@ sub BestMatchingReceiver
 }
 
 
+=head2 $edits=LINZ::BERN::BernUtil::FixRinexAntRec( $rinexfile )
+
+Fixes a RINEX observation file to ensure that the antenna and receivers
+are valid.  Returns a hash  ref  with a list of edits structured as 
+
+   { item=> { from=>'xxx1', to=>'xxx2'} }
+
+where item is one of antenna or receiver.
+
+=cut
+
+sub FixRinexAntRec
+{
+    my( $rinexfile) = @_;
+    my $edits={};
+    my $rx=new LINZ::GNSS::RinexFile( $rinexfile, skip_obs=>1 );
+    my $rnxant=$rx->anttype;
+    my $rnxrec=$rx->rectype;
+
+    my $vldant=BestMatchingAntenna($rnxant);
+    my $vldrec=BestMatchingReceiver($rnxrec);
+    
+    return $edits if $vldant eq $rnxant && $vldrec eq $rnxrec;
+
+    $rx->anttype($vldant);
+    $rx->rectype($vldrec);
+
+    $edits->{antenna} = {from=>$rnxant, to=>$vldant} if $rnxant ne $vldant;
+    $edits->{receiver} = {from=>$rnxrec, to=>$vldrec} if $rnxrec ne $vldrec;
+
+    my $tmpfile=$rinexfile.'.rnxtmp';
+    $rx->write($tmpfile);
+    if( -f $tmpfile )
+    {
+        unlink($rinexfile) || croak("Cannot replace $rinexfile\n");
+        rename($tmpfile,$rinexfile) || croak("Cannot rename $tmpfile to $rinexfile\n");
+    }
+    return $edits;
+}
 
 
 
