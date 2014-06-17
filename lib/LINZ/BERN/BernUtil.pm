@@ -143,9 +143,16 @@ Creates a coordinate file named filename.CRD
 
 Creates an abbreviations file filename.ABB.  Only applicable if CrdFile is also defined
 
+=item FixRinexAntRec=>1
+
+If true then the antenna and receiver types are checked to make sure they are valid,
+and if they are not then the values are with best guess values using the FixRinexAntRec 
+function.
+
 =item AddNoneRadome=>1
 
-If true then blank radome entries are replaced with NONE
+If true then blank radome entries are replaced with NONE (redundant if FixRinexAntRec
+option is selected)
 
 =item SetupUserMenu=>1
 
@@ -375,7 +382,18 @@ sub CreateCampaign
                     }
 
                     my $anttype=sprintf("%-20.20s",$rf->anttype);
-                    if( $options{AddNoneRadome} )
+                    my $rectype=$rf->rectype;
+
+                    my $srcanttype=$anttype;
+                    my $srcrectype=$rectype;
+
+                    if( $options{FixRinexAntRec} )
+                    {
+                        my $edits=FixRinexAntRec($rf);
+                        $anttype=$edits->{antenna}->{to} if exists $edits->{antenna};
+                        $rectype=$edits->{receiver}->{to} if exists $edits->{receiver};
+                    }
+                    elsif( $options{AddNoneRadome} )
                     {
                         substr($anttype,16,4)='NONE' if substr($anttype,16,4) eq '    ';
                         $rf->anttype($anttype);
@@ -384,8 +402,6 @@ sub CreateCampaign
                     my $dehn=$rf->delta_hen;
                     my $antheight=0.0;
                     $antheight=$dehn->[0] if ref($dehn);
-                    
-                    my $rectype=$rf->rectype;
 
                     $rf->markname($rawcode);
                     $rf->write("$jobdir/RAW/$rawname");
@@ -393,6 +409,8 @@ sub CreateCampaign
                     push(@files, {
                         orig_filename=>$srcfile,
                         orig_markname=>$srccode,
+                        orig_anttype=>$srcanttype,
+                        orig_rectype=>$srcrectype,
                         filename=>$rawname,
                         markname=>$rawcode,
                         anttype=>$anttype,
@@ -1020,11 +1038,15 @@ sub BestMatchingReceiver
 =head2 $edits=LINZ::BERN::BernUtil::FixRinexAntRec( $rinexfile )
 
 Fixes a RINEX observation file to ensure that the antenna and receivers
-are valid.  Returns a hash  ref  with a list of edits structured as 
+are valid.  $rinexfile may be either a filename, in which case the file 
+is overwritten, or a LINZ::GNSS::RinexFile object, in which case the 
+receiver and antennae fields are updated.
 
-   { item=> { from=>'xxx1', to=>'xxx2'} }
+Returns a hash ref with a list of edits structured as 
 
-where item is one of antenna or receiver.
+   { item=> { from=>'xxx1', to=>'xxx2'}, ...  }
+
+where item is may be "antenna" or "receiver".
 
 =cut
 
@@ -1032,7 +1054,10 @@ sub FixRinexAntRec
 {
     my( $rinexfile) = @_;
     my $edits={};
-    my $rx=new LINZ::GNSS::RinexFile( $rinexfile, skip_obs=>1 );
+    my $rx = $rinexfile;
+
+    $rx=new LINZ::GNSS::RinexFile( $rinexfile, skip_obs=>1 ) if ! ref($rinexfile);
+
     my $rnxant=$rx->anttype;
     my $rnxrec=$rx->rectype;
 
@@ -1047,12 +1072,15 @@ sub FixRinexAntRec
     $edits->{antenna} = {from=>$rnxant, to=>$vldant} if $rnxant ne $vldant;
     $edits->{receiver} = {from=>$rnxrec, to=>$vldrec} if $rnxrec ne $vldrec;
 
-    my $tmpfile=$rinexfile.'.rnxtmp';
-    $rx->write($tmpfile);
-    if( -f $tmpfile )
+    if( ! ref($rinexfile) )
     {
-        unlink($rinexfile) || croak("Cannot replace $rinexfile\n");
-        rename($tmpfile,$rinexfile) || croak("Cannot rename $tmpfile to $rinexfile\n");
+        my $tmpfile=$rinexfile.'.rnxtmp';
+        $rx->write($tmpfile);
+        if( -f $tmpfile )
+        {
+            unlink($rinexfile) || croak("Cannot replace $rinexfile\n");
+            rename($tmpfile,$rinexfile) || croak("Cannot rename $tmpfile to $rinexfile\n");
+        }
     }
     return $edits;
 }
