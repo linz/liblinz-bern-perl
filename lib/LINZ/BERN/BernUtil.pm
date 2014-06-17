@@ -545,6 +545,9 @@ The status returned by the startBPE object ERROR_STATUS variable
 
 =back
 
+The script returns the bernese error status, which is if the script completes
+successfully.
+
 =cut
 
 sub RunPcf
