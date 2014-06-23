@@ -296,6 +296,17 @@ sub CreateCampaign
                 my $rename=0;
                 my %renamecodes=();
                 my $nextname=0;
+
+                if( ref($options{RenameCodes}) eq 'ARRAY' )
+                {
+                    $renamecodes{''}=1;
+                    foreach my $code (@{$options{RenameCodes}})
+                    {
+                        $renamecodes{uc($code)} = 1;
+                    }
+                }
+
+                # If rename specified
                 if( $options{RenameRinex} ne '' )
                 {
                     my $newname=$options{RenameRinex};
@@ -311,15 +322,40 @@ sub CreateCampaign
                         return $prefix.sprintf($format,$nextid++).$suffix;
                     };
                     $rename=1;
-                    if( ref($options{RenameCodes}) eq 'ARRAY' )
-                    {
-                        $renamecodes{''}=1;
-                        foreach my $code (@{$options{RenameCodes}})
-                        {
-                            $renamecodes{uc($code)} = 1;
-                        }
-                    }
                 }
+                # If only have RenameCodes specified, then try replacing characters in current 
+                # code starting at the end.
+                elsif( $options{RenameCodes} )
+                {
+                    $nextname=sub
+                    {
+                        my ($code)=@_;
+                        return $code if ! exists $renamecodes{$code};
+                        my $newcode='';
+                        foreach my $i (3,2,1,0)
+                        {
+                            my $tmplt=substr($code,0,$i).'%0'.(4-$i).'d';
+                            my $max=10**(4-$i)-1;
+                            foreach my $j (1..$max)
+                            {
+                                my $test=sprintf($tmplt,$j);
+                                if( ! exists $renamecodes{$test} )
+                                {
+                                    $newcode=$test;
+                                    last;
+                                }
+                            }
+                            last if $newcode ne '';
+                        }
+                        if( $newcode eq '' )
+                        {
+                            croak("Cannot generate alternative name for $code\n");
+                        }
+                        return $newcode;
+                    };
+                    $rename=1;
+                }
+
                 my %rnxfiles=();
 
                 foreach my $rnxfile (@$rinexfiles)
@@ -339,7 +375,7 @@ sub CreateCampaign
 
                     if( $renamefile )
                     {
-                        $codemap{$rawcode}=$nextname->() if ! exists $codemap{$rawcode};
+                        $codemap{$rawcode}=$nextname->($rawcode) if ! exists $codemap{$rawcode};
                         $rawcode=$codemap{$rawcode};
                         $rawname=$rawcode.substr($rawname,4);
                     }
