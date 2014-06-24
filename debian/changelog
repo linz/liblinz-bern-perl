@@ -1,3 +1,9 @@
+liblinz-bern-perl (1.4.0-1) precise; urgency=low
+
+  * Fixing renaming to allow minimal changes to user codes
+
+ -- Chris Crook <ccrook@linz.govt.nz>  Tue, 24 Jun 2014 14:27:55 +1200
+
 liblinz-bern-perl (1.3.0-1) precise; urgency=low
 
   * Adding BestMatchingAntenna and BestMatchingReceiver functions
