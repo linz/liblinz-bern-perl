@@ -175,8 +175,9 @@ ids of (for example) reference stations.
 Provides a list of codes for which the Rinex files are renamed.
 codelist is an array ref of codes for which the renaming is applied.
 If RenameCodes is specified then the RenameRinex option will only 
-apply to files and mark names which match the listed codes. This option
-has no effect if RenameRinex is not specified.
+apply to files and mark names which match the listed codes. If 
+RenameCodes is specified and RenameRinex is not, then codes matching 
+the list will be replaced using a minimal replacement.
 
 =item SettingsFile=>0
 
@@ -213,6 +214,7 @@ The session id (only if the session file is created)
 =item variables
 
 An empty hash for holding user variables.  This can be populated before calling RunPcf.
+
 =item marks
 
 An array of mark codes
@@ -309,9 +311,9 @@ sub CreateCampaign
                 # If rename specified
                 if( $options{RenameRinex} ne '' )
                 {
-                    my $newname=$options{RenameRinex};
+                    my $newname=uc($options{RenameRinex});
                     croak("Invalid RenameRinex code $newname\n") 
-                        if length($newname) != 4 || $newname !~ /^(\w*)(\#*)(\w*)$/;
+                        if length($newname) != 4 || $newname !~ /^(\w*)(\#+)(\w*)$/;
                     my ($prefix,$ndigit,$suffix)=($1,length($2),$3);
                     my $nextid=1;
                     my $maxid=10**$ndigit-1;
