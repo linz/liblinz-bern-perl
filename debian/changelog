@@ -1,3 +1,11 @@
+liblinz-bern-perl (1.5.0-1) precise; urgency=low
+
+  * Improving code around RINEX renaming
+  * Adding some utility scripts to the installation
+  * Restricting antenna/receiver lists to those capable of/calibrated for dual frequency GPS obs
+
+ -- Chris Crook <ccrook@linz.govt.nz>  Thu, 10 Jul 2014 06:53:11 +1200
+
 liblinz-bern-perl (1.4.0-1) precise; urgency=low
 
   * Fixing renaming to allow minimal changes to user codes
