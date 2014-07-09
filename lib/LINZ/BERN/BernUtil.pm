@@ -929,6 +929,16 @@ sub AntennaList
             next if $ant =~ /^MW\s+GEO/;
             next if $ant =~ /^MW\s+GLONASS/;
             next if $ant =~ /^SLR\s+REFL/;
+            # Filter out antennae not calibrated for dual frequency GPS obs
+            my $ngpsfrq=0;
+            while( $line !~ /^\s*$/ )
+            {
+                my $sys=substr($line,28,1);
+                next if $sys ne 'G';
+                $ngpsfrq=substr($line,32,3)+0;
+                last;
+            }
+            next if $ngpsfrq < 2;
             push(@$LoadedAntennae,$ant);
         }
         close($af);
@@ -1020,6 +1030,20 @@ sub ReceiverList
             my $rec=substr($line,0,20);
             next if $rec !~ /\S/;
             $rec =~ s/\s*$//;
+            
+            # Check that the receiver handles GPS system
+            next if substr($line,49) !~ /G/;
+
+            # Check this is a dual frequency receiver
+            my $freq=substr($line,35,2);
+            while( $line=<$af>)
+            {
+                last if $line =~ /^\s*$/;
+                $freq .= ' '.substr($line,35,2);
+            }
+            next if $freq !~ /L1/;
+            next if $freq !~ /L2/;
+
             push(@$LoadedReceivers,$rec);
         }
         close($af);
@@ -1048,7 +1072,7 @@ sub BestMatchingReceiver
     return $rec if exists $validRec{$rec};
 
     # Build a regular expression to match as much of
-    # the antenna string as possible;
+    # the receiver string as possible;
 
     my $repre='^(';
     my $resuf=')';
