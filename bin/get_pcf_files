@@ -13,7 +13,16 @@
 
 use strict;
 
-scalar(@ARGV)==1 || die "Require the name of the PCF file as input";
+my $syntax=<<EOD;
+get_pcf_files: Prints a list of files used by a Bernese PCF.
+
+Must be run in the GPSUSER directory.  The output list can be piped to,
+for example, tar to dump the PCF to a script directory.
+
+EOD
+
+scalar(@ARGV)==1 || die $syntax;
+
 my $pcf=$ARGV[0];
 $pcf .= '.PCF' if $pcf !~ /\.PCF$/i;
 $pcf = "PCF/$pcf";
