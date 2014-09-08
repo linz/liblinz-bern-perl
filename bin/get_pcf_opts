@@ -121,7 +121,7 @@ foreach my $script (@$scripts)
             {
                 my $param=$1;
                 my $descr=$2;
-                $descr =~ s/\}"//g;
+                $descr =~ s/\"//g;
                 $fdescr{$param}=$descr;
                 next;
             };
@@ -235,6 +235,14 @@ sub evalcond
         elsif( $cmp eq '/' || $cmp eq '/=')
         {
             $status = 1 if $var ne $val;
+        }
+        elsif( $cmp eq '>' )
+        {
+            $status = 1 if $var > $val;
+        }
+        elsif( $cmp eq '<' )
+        {
+            $status = 1 if $var < $val;
         }
         else
         {

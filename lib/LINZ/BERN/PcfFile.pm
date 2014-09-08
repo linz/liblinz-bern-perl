@@ -6,7 +6,10 @@ use Carp;
 
 =head1 LINZ::BERN::PcfFile
 
-Package to handle Bernese SESSIONS.SES file.
+Package to load a Bernese PCF file
+
+Assumes that the Bernese environment is installed to create the $U
+environment variable.  Reads from the /PCF/ and /SCRIPT/ directories.
 
 Synopsis:
 
