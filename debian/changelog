@@ -1,3 +1,10 @@
+liblinz-bern-perl (1.5.3-1) trusty; urgency=medium
+
+  * Updating PCF analysis scripts
+  * Bug fixes on get_pcf_opts
+
+ -- Chris Crook <ccrook@linz.govt.nz>  Mon, 08 Sep 2014 13:50:06 +1200
+
 liblinz-bern-perl (1.5.2-1) precise; urgency=low
 
   * Moving scan_rinex_files to more appropriate package
