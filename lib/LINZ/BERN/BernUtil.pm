@@ -2,6 +2,15 @@
 
 Package provides utility functions to support bern processing.
 
+The main function of this module is to allow creating and running PCF files, and in 
+particular creating an environment that allows multiple scripts to be running simultaneously
+without conflict.  This is done using following steps:
+
+   my $environment=LINZ::BERN::BernUtil::CreateRuntimeEnvironment();
+   my $campaign=LINZ::BERN::BernUtil::CreateCampaign(...);
+   my $result=LINZ::BERN::BernUtil::RunPcf($pcf,$campaign,%$environment);
+   my $status=LINZ::BERN::BernUtil::RunPcfStatus($campaign);
+
 =cut
 
 use strict;
@@ -13,9 +22,10 @@ use LINZ::BERN::SessionFile;
 use LINZ::BERN::CrdFile;
 use LINZ::GNSS::RinexFile;
 use LINZ::GNSS::Time qw/seconds_datetime time_elements year_seconds seconds_julianday/;
-use File::Path qw/remove_tree/;
+use File::Path qw/make_path remove_tree/;
 use File::Basename;
 use File::Copy;
+use File::Copy::Recursive qw/dircopy/;
 use Carp;
 
 use JSON::PP;
@@ -108,6 +118,260 @@ sub SetBerneseEnv
     return $bernenv;
 }
 
+=head2 $environment=LINZ::BERN::BernUtil::CreateRuntimeEnvironment( $userdir, $datadir, %options )
+
+This script creates a run-time user environment for Bernese scripts.  It creates 
+default minimal user and campaign directories for running a PCF in specified locations 
+as well setting the corresponding environment variables.  The $environment has
+created contains CLIENT_ENV and CPU_FILE entries that can be passed in to the RunPcf
+function.  
+
+If the user and data directories are not specified (empty) then it uses /tmp/bernese/user$$
+and /tmp/bernese/data$$.
+
+The main purpose in creating these directories is to allow the PCF to run without a risk
+of conflicting with other enviroments.
+
+The options can include:
+
+=over
+
+=item overwrite=>1  
+
+Allows replacing an existing user environment.  Otherwise the script will die if there is 
+already a user directory in the specified location, except that if the user directory is 
+empty then the temporary name created will allow overwriting.  
+An existing data directory will be left untouched.
+
+=item source_user_dir
+
+Location from which user files are copied or to which symbolic links are created.  The 
+default is ${X}.
+
+=item settings=>string
+
+A new line delimited string of settings, as per default settings example below.
+
+=item template_directory=dirname
+
+A directory that is copied to the target. The directory is expected to include a file 
+"settings" from which settings (for symbolic links etc) are copied in place of the 
+settings string.  Overrides "settings=" and the default settings.
+
+=back
+
+The files installed into the environment are defined by a settings string, which
+is a new line separated string. This defines the following entities:
+
+=over
+
+=item CLIENT_ENV     
+
+The location into which the client enviroment is written for subsequent loading by the Bernese scripts
+
+=item CPU_FILE
+
+The name of the CPU file
+
+=item PCF_FILE
+
+The name of a PCF file from the settings.  This is not used anywhere, but allows the settings
+specfication to include a PCF file.
+
+=item makdir $dir
+
+A directory to be created
+
+=item symlink option1 option2 ... linkname
+
+Creates a symbolic link at linkname to the first of option1 option2 ... that exists
+
+=item copy source target
+
+Copies the specified file
+   
+=back
+
+Settings can include the Bernese environment variables defined when the the
+
+The default settings are as follows:
+
+  CLIENT_ENV ${U}/LOADGPS.setvar
+  CPU_FILE   UNIX
+  symlink ${SRC}/OPT ${U}/OPT
+  symlink ${SRC}/PCF ${U}/PCF
+  symlink ${SRC}/USERSCPT ${SRC}/SCRIPT ${U}/SCRIPT
+  makedir ${U}/WORK
+  makedir ${U}/PAN
+  copy ${SRC}/PAN/EDITPCF.INP ${U}/PAN/EDITPCF.INP
+  copy ${SRC}/PAN/MENU_CMP.INP ${U}/PAN/MENU_CMP.INP
+  copy ${SRC}/PAN/MENU_EXT.INP ${U}/PAN/MENU_EXT.INP
+  copy ${SRC}/PAN/MENU.INP ${U}/PAN/MENU.INP
+  copy ${SRC}/PAN/MENU_PGM.INP ${U}/PAN/MENU_PGM.INP
+  copy ${SRC}/PAN/MENU_VAR.INP ${U}/PAN/MENU_VAR.INP
+  copy ${SRC}/PAN/NEWCAMP.INP ${U}/PAN/NEWCAMP.INP
+  copy ${SRC}/PAN/RUNBPE.INP ${U}/PAN/RUNBPE.INP
+  copy ${SRC}/PAN/UNIX.CPU ${U}/PAN/UNIX.CPU
+
+=cut
+
+our $DefaultBernUserSettings=<<'EOD';
+
+CLIENT_ENV ${U}/LOADGPS.setvar
+CPU_FILE UNIX
+symlink ${SRC}/OPT ${U}/OPT
+symlink ${SRC}/PCF ${U}/PCF
+symlink ${SRC}/USERSCPT ${SRC}/SCRIPT ${U}/SCRIPT
+makedir ${U}/WORK
+makedir ${U}/PAN
+copy ${SRC}/PAN/EDITPCF.INP ${U}/PAN/EDITPCF.INP
+copy ${SRC}/PAN/MENU_CMP.INP ${U}/PAN/MENU_CMP.INP
+copy ${SRC}/PAN/MENU_EXT.INP ${U}/PAN/MENU_EXT.INP
+copy ${SRC}/PAN/MENU.INP ${U}/PAN/MENU.INP
+copy ${SRC}/PAN/MENU_PGM.INP ${U}/PAN/MENU_PGM.INP
+copy ${SRC}/PAN/MENU_VAR.INP ${U}/PAN/MENU_VAR.INP
+copy ${SRC}/PAN/NEWCAMP.INP ${U}/PAN/NEWCAMP.INP
+copy ${SRC}/PAN/RUNBPE.INP ${U}/PAN/RUNBPE.INP
+copy ${SRC}/PAN/UNIX.CPU ${U}/PAN/UNIX.CPU
+
+EOD
+
+sub CreateRuntimeEnvironment
+{
+    my($userdir,$datadir,%options)=@_;
+    my $patherror;
+
+    my $overwrite=$options{overwrite} || ! $userdir;
+    $userdir ||= "/tmp/bernese/user$$";
+    $datadir ||= "/tmp/bernese/data$$";
+
+    if( -e $userdir )
+    {
+        if( $overwrite )
+        {
+            remove_tree($userdir,{error=>\$patherror});
+        }
+        croak("Cannot create Bernese user directory at $userdir - already in use\n") if -e $userdir;
+    }
+
+    my $data_exists=-d $datadir;
+
+    my $env=
+    {
+        CLIENT_ENV=>"$userdir/LOADGPS.setvar",
+        CPU_FILE=>"UNIX",
+    };
+
+    eval
+    {
+
+        #  Create the user and data environments if they don't already exist
+        make_path($datadir,{error=>\$patherror}) if ! -d $datadir;
+        die "Cannot create Bernese campaign directory at $datadir\n" if ! -d $datadir;
+
+        make_path($userdir,{error=>\$patherror});
+        die "Cannot create Bernese user directory at $userdir\n" if ! -d $userdir;
+
+        my $bernenv=SetBerneseEnv('',
+            U=>$userdir,
+            P=>$datadir
+        );
+
+        my $src = $options{source_user_dir} || $ENV{X};
+        die "Source for Bern user environment $src missing\n" if ! -d $src;
+        
+        my $settings=$options{settings} || $DefaultBernUserSettings; 
+
+        my $templatedir=$options{template_directory};
+
+        my $settingssrc="bern user environment settings";
+
+        if( $templatedir )
+        {
+            -d $templatedir || die "Bern user template $templatedir not defined\n";
+            -f "$userdir/settings" 
+                || die "Bern user template $templatedir doesn't include \"settings\" file\n";
+            dircopy($templatedir,$userdir);
+            open( my $sf, "<$userdir/settings") || die "Cannot open $userdir/settings file\n";
+            $settings=join('',<$sf>);
+            $settingssrc="$userdir/settings";
+        }
+
+        # Process the settings 
+
+        foreach my $line (split(/\n/,$settings))
+        {
+            next if $line =~ /^\s*(#|$)/;
+            $line =~ s/\s*$//;
+            my ($key,@values)=split(' ',$line);
+            foreach my $v (@values)
+            {
+                $v =~ s/\$\{SRC\}/$src/eg;
+                $v =~ s/\$\{(\w+)\}/$ENV{$1}/eg;
+            }
+            if( $key =~ /^(CLIENT_ENV|CPU_FILE|PCF_FILE)$/ && @values == 1)
+            {
+                $env->{$key}=$values[0];
+            }
+            elsif( $key eq 'makedir' && @values == 1 )
+            {
+                make_path($values[0]);
+            }
+            elsif( $key eq 'symlink' && @values >= 2 )
+            {
+                die "Bernese environment symlink target $values[0] doesn't exist\n"
+                   if ! -e $values[0];
+                my $target=pop(@values);
+                my $linked=0;
+                foreach my $v (@values)
+                {
+                    next if ! -e $v;
+                    symlink($v,$target) ||
+                        die "Cannot create symbolic link from $v to $target\n";
+                    $linked=1;
+                    last;
+                }
+                die "Cannot create symbolic link for $target\n" if ! $linked;
+            }
+            elsif( $key eq 'copy' && @values == 2 )
+            {
+                copy($values[0],$values[1]) ||
+                    die "Cannot copy $values[0] to $values[1]\n";
+            }
+            else
+            {
+                die "Invalid data in $settingssrc: $line\n";
+            }
+        }
+
+        # Check the CPU file exists
+        
+        my $cpufile=$env->{CPU_FILE};
+        die "CPU file $cpufile is missing\n"
+           if ! -f "$userdir/PAN/$cpufile.CPU";
+
+        # Create the settings file
+
+        my $settingsfile=$env->{CLIENT_ENV};
+        open(my $svf,">$settingsfile") 
+            || die "Cannot create Bernese environment file $settingsfile\n";
+        print $svf "# PositioNZ-PP Bernese client settings\n";
+        foreach my $key (sort keys %$bernenv)
+        {
+            printf $svf "export %s=\"%s\"\n",$key,$bernenv->{$key};
+        }
+        close($svf);
+    };
+    if( $@ )
+    {
+        my $error=$@;
+        remove_tree($userdir,{error=>\$patherror});
+        remove_tree($datadir,{error=>\$patherror}) if ! $data_exists;
+        croak($error);
+    }
+
+    return $env;
+}
 
 =head2 $campaign = LINZ::BERN::BernUtil::CreateCampaign($jobid,%options)
 
@@ -566,6 +830,9 @@ Additional options.  Currently supported are:
 =item CPU_FILE=>$cpu_file
 
 =back
+
+This variable can be replaced with the environment returned by CreateRuntimeEnvironment
+(ie %$environment).
 
 =back
 
