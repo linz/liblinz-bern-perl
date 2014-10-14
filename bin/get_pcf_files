@@ -12,6 +12,7 @@
 #
 
 use strict;
+use LINZ::BERN::PcfFile;
 
 my $syntax=<<EOD;
 get_pcf_files: Prints a list of files used by a Bernese PCF.
@@ -30,66 +31,46 @@ $pcf = "PCF/$pcf";
 -d 'PCF' || die "PCF directory not found, are you in a GPSUSER directory?\n";
 -d 'SCRIPT' || die "SCRIPT directory not found, are you in a GPSUSER directory?\n";
 -d 'OPT' || die "OPT directory not found, are you in a GPSUSER directory?\n";
+-e $pcf || die "Cannot open PCF file $pcf\n";
 
-open(my $pcff,"$pcf") || die "Cannot find $pcf\n";
 
 # Process the PCF file to find the list of scripts and options it uses...
 
-my $files={$pcf=>1};
+$ENV{U}='.';
+my $pcff=LINZ::BERN::PcfFile->open($pcf);
 
-my $scripts=[];
-my %optdirs;
-while(my $line=<$pcff>)
-{
-    last if $line=~/^PID\s+USER/;
-    if( $line =~ /^\d+\s+(\w+)\s+(\w+)/ )
-    {
-        push(@$scripts,{file=>"SCRIPT/$1",optdir=>"OPT/$2"});
-        $optdirs{"OPT/$2"}=1;
-        
-    }
-}
-close($pcff);
+my @files=($pcf);
+my %scripts=();
+my %opts=();
+my %pan=();
 
-foreach my $script (@$scripts)
+foreach my $pid ($pcff->pids())
 {
-    open(my $scpf,$script->{file}) || die "Cannot open script file $script->{file}\n";
-    $files->{$script->{file}}=1;
-    my $vars={};
-    my $pgms={};
-    while(my $line=<$scpf>)
+    $scripts{'SCRIPT/'.$pid->{script}}=1;
+    my $optdir=$pid->{optdir};
+    $opts{$optdir}=1;
+    foreach my $p (@{$pid->{programs}})
     {
-        if( $line =~ /^\s*my\s+\$(\w+)\s*\=\s*(['"])(\w+)\2\;\s*$/ )
-        {
-            $vars->{$1}=$3;
-            next;
-        }
-        if( $line =~ /^\s*\$bpe\-\>RUN_PGMS\(\$(\w+)\)\;/ )
-        {
-            $pgms->{$vars->{$1}}=1;
-        }
-    }
-    close($scpf);
-    my $optdir=$script->{optdir};
-    foreach my $pgm ( sort keys %$pgms )
-    {
-        my $f="$optdir/$pgm.INP";
-        die "$pgm.INP in $optdir is missing\n" if ! -e $f;
-        $files->{$f} = 1;
+        $pan{"OPT/$optdir/$p.INP"}=1;
     }
 }
 
-foreach my $optdir (sort keys %optdirs)
+# Add menu panels
+
+foreach my $optdir (keys %opts)
 {
-    foreach my $f (glob "$optdir/MENU*.INP")
+    foreach my $f (glob "OPT/$optdir/MENU*.INP")
     {
-        $files->{$f}=1;
+        $pan{$f}=1;
     }
 }
+
+push(@files,sort keys %scripts);
+push(@files,sort keys %pan);
 
 # If we've got to here then all looks OK and we should have the complete set of files...
 
-foreach my $f (sort keys %$files )
+foreach my $f (@files )
 {
     print "$f\n";
 }

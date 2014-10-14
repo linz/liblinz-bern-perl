@@ -51,6 +51,11 @@ sub new
     return $self;
 }
 
+sub open
+{
+    return new(@_);
+}
+
 sub pcfname { return $_[0]->{pcfname}; }
 
 sub filename { return $_[0]->{filename} }
@@ -78,7 +83,7 @@ sub read
     $self->{pids}=[];
     my $pids=$self->{pids};
 
-    open(my $pcff, $self->{filename}) || croak("Cannot open PCF ".$self->{pcfname}."\n");
+    CORE::open(my $pcff, $self->{filename}) || croak("Cannot open PCF ".$self->{pcfname}."\n");
 
     my %optdirs;
     while(my $line=<$pcff>)
@@ -101,18 +106,18 @@ sub read
         {
             my $scriptfile=$ENV{U}.'/SCRIPT/'.$script;
             my $pgms={};
-            open(my $scpf,$scriptfile) || carp("Cannot open script file $scriptfile\n");
+            CORE::open(my $scpf,$scriptfile) || carp("Cannot open script file $scriptfile\n");
             if( $scpf )
             {
                 my $vars={};
                 while(my $line=<$scpf>)
                 {
-                    if( $line =~ /^\s*my\s+\$(\w+)\s*\=\s*(['"])(\w+)\2\;\s*$/ )
+                    if( $line =~ /^\s*(?:my\s+)?\$(\w+)\s*\=\s*(['"])(\w+)\2\s*\;\s*$/ )
                     {
                         $vars->{$1}=$3;
                         next;
                     }
-                    if( $line =~ /^\s*\$bpe\-\>RUN_PGMS\(\$(\w+)\)\;/ )
+                    if( $line =~ /^\s*\$bpe\-\>RUN_PGMS\(\s*\$(\w+)\s*\)(?:\s|\;)/ )
                     {
                         $pgms->{$vars->{$1}}=1;
                     }
