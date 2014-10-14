@@ -118,16 +118,13 @@ sub SetBerneseEnv
     return $bernenv;
 }
 
-=head2 $environment=LINZ::BERN::BernUtil::CreateRuntimeEnvironment( $userdir, $datadir, %options )
+=head2 $environment=LINZ::BERN::BernUtil::CreateRuntimeEnvironment( %options )
 
 This script creates a run-time user environment for Bernese scripts.  It creates 
 default minimal user and campaign directories for running a PCF in specified locations 
-as well setting the corresponding environment variables.  The $environment has
+as well setting the corresponding environment variables.  The $environment 
 created contains CLIENT_ENV and CPU_FILE entries that can be passed in to the RunPcf
 function.  
-
-If the user and data directories are not specified (empty) then it uses /tmp/bernese/user$$
-and /tmp/bernese/data$$.
 
 The main purpose in creating these directories is to allow the PCF to run without a risk
 of conflicting with other enviroments.
@@ -143,20 +140,34 @@ already a user directory in the specified location, except that if the user dire
 empty then the temporary name created will allow overwriting.  
 An existing data directory will be left untouched.
 
-=item source_user_dir
+=item user_directory 
+
+The location in which the user environment will be created.  The default is /tmp/bernese/user$$
+
+=item user_directory_settings=>string
+
+A new line delimited string of settings, as per default settings example below.  These are 
+used to construct the user environment
+
+=item source_user_directory
 
 Location from which user files are copied or to which symbolic links are created.  The 
 default is ${X}.
 
-=item settings=>string
+=item data_directory
 
-A new line delimited string of settings, as per default settings example below.
+The location in which the data directory will be created.  The default is /tmp/bernese/data$$
 
 =item template_directory=dirname
 
 A directory that is copied to the target. The directory is expected to include a file 
 "settings" from which settings (for symbolic links etc) are copied in place of the 
-settings string.  Overrides "settings=" and the default settings.
+settings string.  Overrides "user_directory_settings=" and the default settings.
+
+=item environment_variables
+
+An optional hash of Bernese environment variables that will override the default values (for
+example resetting the SAVEDISK area.)
 
 =back
 
@@ -192,7 +203,9 @@ Copies the specified file
    
 =back
 
-Settings can include the Bernese environment variables defined when the the
+The user directory settings define how the user directory is constructed, by copying or 
+linking selected files from a selected environment.  It also defines the CLIENT_ENV and
+CPU_FILE settings that will be used to run jobs in the constructed enviroment.
 
 The default settings are as follows:
 
@@ -238,9 +251,11 @@ EOD
 
 sub CreateRuntimeEnvironment
 {
-    my($userdir,$datadir,%options)=@_;
+    my(%options)=@_;
     my $patherror;
 
+    my $userdir=$options{user_directory};
+    my $datadir=$options{data_directory};
     my $overwrite=$options{overwrite} || ! $userdir;
     $userdir ||= "/tmp/bernese/user$$";
     $datadir ||= "/tmp/bernese/data$$";
@@ -272,15 +287,15 @@ sub CreateRuntimeEnvironment
         make_path($userdir,{error=>\$patherror});
         die "Cannot create Bernese user directory at $userdir\n" if ! -d $userdir;
 
-        my $bernenv=SetBerneseEnv('',
-            U=>$userdir,
-            P=>$datadir
-        );
+        my $envvars=$options{'environment_variables'} || {};
+        $envvars->{U}=$userdir;
+        $envvars->{P}=$datadir;
+        my $bernenv=SetBerneseEnv('',%$envvars);
 
-        my $src = $options{source_user_dir} || $ENV{X};
+        my $src = $options{source_user_directory} || $ENV{X};
         die "Source for Bern user environment $src missing\n" if ! -d $src;
         
-        my $settings=$options{settings} || $DefaultBernUserSettings; 
+        my $settings=$options{user_directory_settings} || $DefaultBernUserSettings; 
 
         my $templatedir=$options{template_directory};
 
