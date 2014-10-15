@@ -1,3 +1,10 @@
+liblinz-bern-perl (1.6.1-1) trusty; urgency=medium
+
+  * Tidying CreateRuntimeEnvironment parameters
+  * Improving reading script files to avoid missed programs
+
+ -- Chris Crook <ccrook@linz.govt.nz>  Wed, 15 Oct 2014 13:16:20 +1300
+
 liblinz-bern-perl (1.6.0-1) trusty; urgency=medium
 
   * Adding function to create Bernese runtime environment for PCF
