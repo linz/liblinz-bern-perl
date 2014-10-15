@@ -133,38 +133,41 @@ The options can include:
 
 =over
 
-=item overwrite=>1  
+=item CanOverwrite=>1  
 
-Allows replacing an existing user environment.  Otherwise the script will die if there is 
-already a user directory in the specified location, except that if the user directory is 
-empty then the temporary name created will allow overwriting.  
-An existing data directory will be left untouched.
+Allows replacing an existing user environment. If this is not set then script will die 
+if there is already a user directory in the specified location.
 
-=item user_directory 
+=item UserDirectory 
 
 The location in which the user environment will be created.  The default is /tmp/bernese/user$$
 
-=item user_directory_settings=>string
+=item UserDirectorySettings=>string
 
 A new line delimited string of settings, as per default settings example below.  These are 
 used to construct the user environment
 
-=item source_user_directory
+=item SourceUserDirectory
 
 Location from which user files are copied or to which symbolic links are created.  The 
 default is ${X}.
 
-=item data_directory
+=item DataDirectory
 
 The location in which the data directory will be created.  The default is /tmp/bernese/data$$
 
-=item template_directory=dirname
+=item DataDirectorySettings=>string
+
+A new line delimited string of settings, as per default settings example below.  These are 
+used to construct the user environment
+
+=item TemplateDirectory=dirname
 
 A directory that is copied to the target. The directory is expected to include a file 
 "settings" from which settings (for symbolic links etc) are copied in place of the 
 settings string.  Overrides "user_directory_settings=" and the default settings.
 
-=item environment_variables
+=item EnvironmentVariables
 
 An optional hash of Bernese environment variables that will override the default values (for
 example resetting the SAVEDISK area.)
@@ -189,7 +192,7 @@ The name of the CPU file
 The name of a PCF file from the settings.  This is not used anywhere, but allows the settings
 specfication to include a PCF file.
 
-=item makdir $dir
+=item makedir $dir
 
 A directory to be created
 
@@ -226,10 +229,13 @@ The default settings are as follows:
   copy ${SRC}/PAN/RUNBPE.INP ${U}/PAN/RUNBPE.INP
   copy ${SRC}/PAN/UNIX.CPU ${U}/PAN/UNIX.CPU
 
+For the data directory settings the default is 
+
+  copy ${SRC}/PAN/MENU_CMP.INP ${P}/MENU_CMP.INP
+
 =cut
 
 our $DefaultBernUserSettings=<<'EOD';
-
 CLIENT_ENV ${U}/LOADGPS.setvar
 CPU_FILE UNIX
 symlink ${SRC}/OPT ${U}/OPT
@@ -246,7 +252,10 @@ copy ${SRC}/PAN/MENU_VAR.INP ${U}/PAN/MENU_VAR.INP
 copy ${SRC}/PAN/NEWCAMP.INP ${U}/PAN/NEWCAMP.INP
 copy ${SRC}/PAN/RUNBPE.INP ${U}/PAN/RUNBPE.INP
 copy ${SRC}/PAN/UNIX.CPU ${U}/PAN/UNIX.CPU
+EOD
 
+our $DefaultBernDataSettings=<<'EOD';
+copy ${SRC}/PAN/MENU_CMP.INP ${P}/MENU_CMP.INP
 EOD
 
 sub CreateRuntimeEnvironment
@@ -254,9 +263,9 @@ sub CreateRuntimeEnvironment
     my(%options)=@_;
     my $patherror;
 
-    my $userdir=$options{user_directory};
-    my $datadir=$options{data_directory};
-    my $overwrite=$options{overwrite} || ! $userdir;
+    my $userdir=$options{UserDirectory};
+    my $datadir=$options{DataDirectory};
+    my $overwrite=$options{CanOverwrite} || ! $userdir;
     $userdir ||= "/tmp/bernese/user$$";
     $datadir ||= "/tmp/bernese/data$$";
 
@@ -287,17 +296,22 @@ sub CreateRuntimeEnvironment
         make_path($userdir,{error=>\$patherror});
         die "Cannot create Bernese user directory at $userdir\n" if ! -d $userdir;
 
-        my $envvars=$options{'environment_variables'} || {};
+        my $envvars=$options{'EnvironmentVariables'} || {};
         $envvars->{U}=$userdir;
         $envvars->{P}=$datadir;
         my $bernenv=SetBerneseEnv('',%$envvars);
 
-        my $src = $options{source_user_directory} || $ENV{X};
+        my $src = $options{SourceUserDirectory} || $ENV{X};
         die "Source for Bern user environment $src missing\n" if ! -d $src;
         
-        my $settings=$options{user_directory_settings} || $DefaultBernUserSettings; 
+        my $settings=$options{UserDirectorySettings} || $DefaultBernUserSettings; 
 
-        my $templatedir=$options{template_directory};
+        if( ! $data_exists )
+        {
+            $settings .= "\n".($options{DataDirectorySettings} || $DefaultBernDataSettings); 
+        }
+
+        my $templatedir=$options{TemplateDirectory};
 
         my $settingssrc="bern user environment settings";
 
@@ -401,7 +415,7 @@ Options can include
 
 =over
 
-=item RinexFiles=>[file1,file2]
+=item RinexFiles=>[file1,file2,...]
 
 Adds specified files to the RAW directory
 
@@ -413,6 +427,11 @@ Creates a session file
 
 Creates a fixed session file for the time span of the rinex files if 0, 
 a daily session file if 1, or an hourly session file if 2.
+
+=item SetSession=>[starttime,endtime]
+
+Defines the start time and end time for a session, overrides those from the
+data files if provided.
 
 =item CrdFile=>filename
 
@@ -740,9 +759,17 @@ sub CreateCampaign
             }
             $campaign->{marks}=\@marks;
             $campaign->{files}=\@files;
+        }
+        if( $options{SetSession} )
+        {
+            $start=$options{SetSession}->[0];
+            $end=$options{SetSession}->[1];
+        }
+        if( $start )
+        {
             $campaign->{session_start}=$start;
             $campaign->{session_end}=$end;
-            if( $options{MakeSessionFile} && @files )
+            if( $options{MakeSessionFile} )
             {
                 my $sfn="$jobdir/STA/SESSIONS.SES";
                 my $sf=new LINZ::BERN::SessionFile($sfn);
