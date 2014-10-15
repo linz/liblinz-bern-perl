@@ -1,3 +1,9 @@
+liblinz-bern-perl (1.7.0-1) trusty; urgency=medium
+
+  * Adding SetSession to CreateCampaign
+
+ -- Chris Crook <ccrook@linz.govt.nz>  Wed, 15 Oct 2014 14:46:42 +1300
+
 liblinz-bern-perl (1.6.1-1) trusty; urgency=medium
 
   * Tidying CreateRuntimeEnvironment parameters
