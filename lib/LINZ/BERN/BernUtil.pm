@@ -8,7 +8,7 @@ without conflict.  This is done using following steps:
 
    my $environment=LINZ::BERN::BernUtil::CreateRuntimeEnvironment();
    my $campaign=LINZ::BERN::BernUtil::CreateCampaign(...);
-   my $result=LINZ::BERN::BernUtil::RunPcf($pcf,$campaign,%$environment);
+   my $result=LINZ::BERN::BernUtil::RunPcf($pcf,$campaign,$environment);
    my $status=LINZ::BERN::BernUtil::RunPcfStatus($campaign);
    LINZ::BERN::BernUtil::DeleteRuntimeEnvironment();
 
@@ -124,8 +124,8 @@ sub SetBerneseEnv
 This script creates a run-time user environment for Bernese scripts.  It creates 
 default minimal user and campaign directories for running a PCF in specified locations 
 as well setting the corresponding environment variables.  The $environment 
-created contains CLIENT_ENV and CPU_FILE entries that can be passed in to the RunPcf
-function.  
+created contains CLIENT_ENV and CPU_FILE entries that can be passed in 
+to the RunPcf function.  
 
 The main purpose in creating these directories is to allow the PCF to run without a risk
 of conflicting with other enviroments.
@@ -864,7 +864,7 @@ sub CreateCampaign
     return $campaign;
 }
 
-=head2 $status=LINZ::BERN::BernUtil::RunPcf($pcf,$campaign,%options)
+=head2 $status=LINZ::BERN::BernUtil::RunPcf($pcf,$campaign,$environment)
 
 Runs a Bernese script (PCF) on the campaign as created by CreateCampaign.
 
@@ -880,9 +880,9 @@ The name of the PCF file to run
 
 The campaign - a hash ref as returned by CreateCampaign
 
-=item %options
+=item $environment
 
-Additional options.  Currently supported are:
+Optional runtime environment (a hash reference).  Currently supported keys are:
 
 =over 
 
@@ -918,7 +918,10 @@ successfully.
 
 sub RunPcf
 {
-    my( $campaign, $pcf, %options )=@_;
+    my( $campaign, $pcf, $environment )=@_;
+
+    $environment ||= {};
+    my %options=%$environment;
 
     # Check that the PCF file exists
     #
