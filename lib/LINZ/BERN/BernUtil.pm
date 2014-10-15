@@ -10,6 +10,7 @@ without conflict.  This is done using following steps:
    my $campaign=LINZ::BERN::BernUtil::CreateCampaign(...);
    my $result=LINZ::BERN::BernUtil::RunPcf($pcf,$campaign,%$environment);
    my $status=LINZ::BERN::BernUtil::RunPcfStatus($campaign);
+   LINZ::BERN::BernUtil::DeleteRuntimeEnvironment();
 
 =cut
 
@@ -398,8 +399,26 @@ sub CreateRuntimeEnvironment
         remove_tree($datadir,{error=>\$patherror}) if ! $data_exists;
         croak($error);
     }
+    $env->{_deluserdir}=$userdir;
+    $env->{_deldatadir}=$datadir if ! $data_exists;
 
     return $env;
+}
+
+=head2 LINZ::BERN::BernUtil::DeleteRuntimeEnvironment( $env ) 
+
+Deletes a runtime environment created by CreateRuntimeEnvironment.
+
+=cut
+
+sub DeleteRuntimeEnvironment
+{
+    my ($env)=@_;
+    my $patherror;
+    my $userdir=$env->{_deluserdir};
+    my $datadir=$env->{_deldatadir};
+    remove_tree($userdir,{error=>\$patherror}) if $userdir;
+    remove_tree($datadir,{error=>\$patherror}) if $datadir;
 }
 
 =head2 $campaign = LINZ::BERN::BernUtil::CreateCampaign($jobid,%options)
