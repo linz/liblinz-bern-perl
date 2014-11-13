@@ -13,7 +13,9 @@ Package for providing access to components of the BERN runtime environment
 
 =cut
 
-our ($outf,$errf,$params);
+our ($outf,$errf,$params,$win32);
+
+$win32 = (uc($ENV{'OS_NAME'} // '') =~ /^WIN/);
 
 $params = {};
 
@@ -135,6 +137,60 @@ sub session_startend
     my $year=$self->param('YR4_INFO');
     my $sf=new LINZ::BERN::SessionFile($sessfn);
     return $sf->sessionStartEnd($sessid,$year);
+}
+
+1;
+
+__END__
+
+Haven't been able to get the following code working yet ...
+Also tried using 
+
+use lib $ENV{BPE};
+use RUNBPE;
+
+my $bpe=new RUNBPE;
+my $var=$bpe->getKey('MENU.INP','MENU_VAR_INP','FILEXT');
+
+but doesn't seem to find the MENU.INP.  Can probably be fixed with 
+including directory name in input ... but need to get sorted with 
+BPE and non BPE environments...
+
+
+#=head2 $v=$env->getMenuVar('varname','MENU_VAR.INP')
+
+Return a value from a Bernese menu panel.  Default is MENU.INP
+Based on code in RUNBPE.pm.
+
+Supports a multiple stage lookup, eg 'MENU_VAR_INP VAR_PLUS'
+
+#=cut
+
+sub getMenuVar
+{
+    my($self,$varname,$panel)=@_;
+    $panel ||= 'MENU.INP';
+    my $option='FILEXT';
+    my $xg=$ENV{XG};
+
+    my $val;
+    foreach my $key ( split(' ',$varname) )
+    {
+        my $irc;
+
+        if ($win32 && 0) 
+        {
+            $val = `\"$xg/GETKEY\" $panel $key $option`;
+            $irc = $?;
+        } else {
+            $val = `echo $panel $varname $key | $xg/GETKEY`;
+            $irc = $?;
+        }
+        die "getMenuVar error for menu $panel, $irc variable $key\n" if $irc;
+
+        $panel=$val;
+    }
+    return $val;
 }
 
 1;
