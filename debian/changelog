@@ -1,3 +1,9 @@
+liblinz-bern-perl (1.10.1-1) trusty; urgency=medium
+
+  * Fixing handling of CPU file
+
+ -- Chris Crook <ccrook@linz.govt.nz>  Fri, 21 Nov 2014 09:57:09 +1300
+
 liblinz-bern-perl (1.10.0-1) trusty; urgency=medium
 
   * Adding handling of CPU_FILE
