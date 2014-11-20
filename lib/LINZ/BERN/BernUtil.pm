@@ -171,7 +171,7 @@ settings string.  Overrides "user_directory_settings=" and the default settings.
 =item EnvironmentVariables
 
 An optional hash of Bernese environment variables that will override the default values (for
-example resetting the SAVEDISK area.)
+example resetting the SAVEDISK area or CPU_FILE.)
 
 =back
 
@@ -209,7 +209,8 @@ Copies the specified file
 
 The user directory settings define how the user directory is constructed, by copying or 
 linking selected files from a selected environment.  It also defines the CLIENT_ENV and
-CPU_FILE settings that will be used to run jobs in the constructed enviroment.
+CPU_FILE settings that will be used to run jobs in the constructed enviroment.  The CPU_FILE
+setting may be overridden in the %options string.
 
 The default settings are as follows:
 
@@ -228,7 +229,7 @@ The default settings are as follows:
   copy ${SRC}/PAN/MENU_VAR.INP ${U}/PAN/MENU_VAR.INP
   copy ${SRC}/PAN/NEWCAMP.INP ${U}/PAN/NEWCAMP.INP
   copy ${SRC}/PAN/RUNBPE.INP ${U}/PAN/RUNBPE.INP
-  copy ${SRC}/PAN/UNIX.CPU ${U}/PAN/UNIX.CPU
+  copy ${SRC}/PAN/${CPU_FILE}.CPU ${U}/PAN/${CPU_FILE}.CPU
 
 For the data directory settings the default is 
 
@@ -252,7 +253,7 @@ copy ${SRC}/PAN/MENU_PGM.INP ${U}/PAN/MENU_PGM.INP
 copy ${SRC}/PAN/MENU_VAR.INP ${U}/PAN/MENU_VAR.INP
 copy ${SRC}/PAN/NEWCAMP.INP ${U}/PAN/NEWCAMP.INP
 copy ${SRC}/PAN/RUNBPE.INP ${U}/PAN/RUNBPE.INP
-copy ${SRC}/PAN/UNIX.CPU ${U}/PAN/UNIX.CPU
+copy ${SRC}/PAN/${CPU_FILE}.CPU ${U}/PAN/${CPU_FILE}.CPU
 EOD
 
 our $DefaultBernDataSettings=<<'EOD';
@@ -284,7 +285,6 @@ sub CreateRuntimeEnvironment
     my $env=
     {
         CLIENT_ENV=>"$userdir/LOADGPS.setvar",
-        CPU_FILE=>"UNIX",
     };
 
     eval
@@ -337,9 +337,9 @@ sub CreateRuntimeEnvironment
             foreach my $v (@values)
             {
                 $v =~ s/\$\{SRC\}/$src/eg;
-                $v =~ s/\$\{(\w+)\}/$ENV{$1}/eg;
+                $v =~ s/\$\{(\w+)\}/$ENV{$1} || $env->{$1}/eg;
             }
-            if( $key =~ /^(CLIENT_ENV|CPU_FILE|PCF_FILE)$/ && @values == 1)
+            if( $key =~ /^(CLIENT_ENV|PCF_FILE)$/ && @values == 1)
             {
                 $env->{$key}=$values[0];
             }
