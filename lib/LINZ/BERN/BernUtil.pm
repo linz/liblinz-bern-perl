@@ -208,14 +208,12 @@ Copies the specified file
 =back
 
 The user directory settings define how the user directory is constructed, by copying or 
-linking selected files from a selected environment.  It also defines the CLIENT_ENV and
-CPU_FILE settings that will be used to run jobs in the constructed enviroment.  The CPU_FILE
-setting may be overridden in the %options string.
+linking selected files from a selected environment.  It can define the CLIENT_ENV and
+CPU_FILE settings that will be used to run jobs in the constructed enviroment.  
 
 The default settings are as follows:
 
   CLIENT_ENV ${U}/LOADGPS.setvar
-  CPU_FILE   UNIX
   symlink ${SRC}/OPT ${U}/OPT
   symlink ${SRC}/PCF ${U}/PCF
   symlink ${SRC}/USERSCPT ${SRC}/SCRIPT ${U}/SCRIPT
@@ -239,7 +237,6 @@ For the data directory settings the default is
 
 our $DefaultBernUserSettings=<<'EOD';
 CLIENT_ENV ${U}/LOADGPS.setvar
-CPU_FILE UNIX
 symlink ${SRC}/OPT ${U}/OPT
 symlink ${SRC}/PCF ${U}/PCF
 symlink ${SRC}/USERSCPT ${SRC}/SCRIPT ${U}/SCRIPT
@@ -285,6 +282,7 @@ sub CreateRuntimeEnvironment
     my $env=
     {
         CLIENT_ENV=>"$userdir/LOADGPS.setvar",
+        CPU_FILE=>$options{'CpuFile'} || 'UNIX',
     };
 
     eval
@@ -339,7 +337,7 @@ sub CreateRuntimeEnvironment
                 $v =~ s/\$\{SRC\}/$src/eg;
                 $v =~ s/\$\{(\w+)\}/$ENV{$1} || $env->{$1}/eg;
             }
-            if( $key =~ /^(CLIENT_ENV|PCF_FILE)$/ && @values == 1)
+            if( $key =~ /^(CLIENT_ENV|CPU_FILE|PCF_FILE)$/ && @values == 1)
             {
                 $env->{$key}=$values[0];
             }
