@@ -9,13 +9,16 @@ use Carp;
 Package to load a Bernese PCF file
 
 Assumes that the Bernese environment is installed to create the $U
-environment variable.  Reads from the /PCF/ and /SCRIPT/ directories.
+environment variable.  Reads from the /PCF/, /SCRIPT/ or /USERSCPT/,
+and /OPT/ directories.
 
 Synopsis:
 
   use LINZ::BERN::PcfFile
 
-  my $pcf=LINZ::BERN::PcfFile->new('TEST.PCF')
+  my $pcf=LINZ::BERN::PcfFile->new('TEST.PCF');
+  my $refscriptdir="$ENV{X}/GPS/USERSCPT";
+  my $pcf=LINZ::BERN::PcfFile->new('TEST.PCF',$refscriptdir);
 
   foreach my $pid ($pcf->pids())
   {
@@ -30,7 +33,7 @@ Synopsis:
 
 sub new
 {
-    my($class,$filename) = @_;
+    my($class,$filename,$refscriptdir) = @_;
     $filename .= '.PCF' if $filename !~ /\.PCF$/;
 
     if( ! -e $filename )
@@ -60,6 +63,7 @@ sub new
         pcfdir=>$pcfdir,
         optdir=>$optdir,
         scriptdir=>$scriptdir,
+        refscriptdir=>$refscriptdir || $scriptdir,
         filename=>$filename,
         pcfname=>$pcfname,
         pids=>[],
@@ -118,8 +122,9 @@ sub read
     # Check what programs are used by each script
     
     my $scriptdir=$self->{scriptdir};
+    my $refscriptdir=$self->{refscriptdir};
     my %scripts=();
-    if( ! -d $scriptdir )
+    if( ! -d $scriptdir && ! -d $refscriptdir )
     {
         carp("Cannot examine scripts as script directory not found\n");
         return;
@@ -131,6 +136,7 @@ sub read
         if( ! exists $scripts{$script} )
         {
             my $scriptfile=$scriptdir.'/'.$script;
+            $scriptfile=$refscriptdir.'/'.$script if ! -e $script;
             my $pgms={};
             CORE::open(my $scpf,$scriptfile) || carp("Cannot open script file $scriptfile\n");
             if( $scpf )
