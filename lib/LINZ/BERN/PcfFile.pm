@@ -31,16 +31,35 @@ Synopsis:
 sub new
 {
     my($class,$filename) = @_;
+    $filename .= '.PCF' if $filename !~ /\.PCF$/;
+
     if( ! -e $filename )
     {
         my $ufile=$ENV{U}.'/PCF/'.$filename;
-        $ufile.='.PCF' if ! -e $ufile && $ufile !~ /\.PCF$/i;
         $filename=$ufile if -e $ufile;
     }
     my $pcfname=$filename;
     $pcfname=~ s/.*[\\\/]//;
+    my $pcfdir=$filename;
+    $pcfdir=~s/[\\\/][^\\\/]*$//;
+    my $optdir;
+    my $scriptdir;
+    if( $pcfdir =~ /[\\\/]PCF$/ )
+    {
+        $optdir=substr($pcfdir,0,-3).'OPT';
+        $scriptdir=substr($pcfdir,0,-3).'SCRIPT';
+        if( ! -d $scriptdir )
+        {
+            $scriptdir=substr($pcfdir,0,-3).'USERSCPT'
+        }
+        $optdir='' if ! -d $optdir;
+        $scriptdir='' if ! -d $scriptdir;
+    }
     my $self=bless
     {
+        pcfdir=>$pcfdir,
+        optdir=>$optdir,
+        scriptdir=>$scriptdir,
         filename=>$filename,
         pcfname=>$pcfname,
         pids=>[],
@@ -98,13 +117,20 @@ sub read
 
     # Check what programs are used by each script
     
+    my $scriptdir=$self->{scriptdir};
     my %scripts=();
+    if( ! -d $scriptdir )
+    {
+        carp("Cannot examine scripts as script directory not found\n");
+        return;
+    }
+    
     foreach my $pid (@$pids)
     {
         my $script=$pid->{script};
         if( ! exists $scripts{$script} )
         {
-            my $scriptfile=$ENV{U}.'/SCRIPT/'.$script;
+            my $scriptfile=$scriptdir.'/'.$script;
             my $pgms={};
             CORE::open(my $scpf,$scriptfile) || carp("Cannot open script file $scriptfile\n");
             if( $scpf )
