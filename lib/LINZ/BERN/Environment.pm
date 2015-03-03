@@ -139,6 +139,37 @@ sub session_startend
     return $sf->sessionStartEnd($sessid,$year);
 }
 
+=head2 $env->fail($msg)
+
+Writes a Bernese style fail message and dies.
+
+=cut 
+
+=head2 $env->warn($msg)
+
+Writes a Bernese style warning message.
+
+=cut 
+
+sub _bernmsg
+{
+    my($fatal,$self,$message,$errtype)=@_;
+    my $msgkey = $fatal ? '***' : '###';
+    my $caller=(caller(2))[1];
+    $caller=~s/.*[\\\/]//;
+    $errtype ||= $caller;
+    my $prefix=' 'x(7+length($errtype));
+    $message=~ s/^\s*//;
+    $message=~ s/\s*$//;
+    $message =~ s/\n/"\n".$prefix/esg;
+    $message="\n\n $msgkey $errtype: $message\n\n";
+    print $message;
+    die($message) if $fatal;
+}
+
+sub fail { _bernmsg(1,@_); }
+sub warn { _bernmsg(0,@_); }
+
 1;
 
 __END__
