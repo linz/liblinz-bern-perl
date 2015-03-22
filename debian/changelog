@@ -1,3 +1,9 @@
+liblinz-bern-perl (1.12.0-1) trusty; urgency=medium
+
+  * Adding fail and warn functions for Bernese user programs
+
+ -- Chris Crook <ccrook@linz.govt.nz>  Mon, 23 Mar 2015 09:29:17 +1300
+
 liblinz-bern-perl (1.11.0-1) trusty; urgency=medium
 
   * Tidying up PcfFile directory handling
