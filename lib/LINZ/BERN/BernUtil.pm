@@ -141,7 +141,7 @@ if there is already a user directory in the specified location.
 
 =item UserDirectory 
 
-The location in which the user environment will be created.  The default is /tmp/bernese/user$$
+The location in which the user environment will be created.  The default is /tmp/bernese_${user}/user$$
 
 =item UserDirectorySettings=>string
 
@@ -155,7 +155,7 @@ default is ${X}.
 
 =item DataDirectory
 
-The location in which the data directory will be created.  The default is /tmp/bernese/data$$
+The location in which the data directory will be created.  The default is /tmp/bernese_${user}/data$$
 
 =item DataDirectorySettings=>string
 
@@ -265,8 +265,9 @@ sub CreateRuntimeEnvironment
     my $userdir=$options{UserDirectory};
     my $datadir=$options{DataDirectory};
     my $overwrite=$options{CanOverwrite} || ! $userdir;
-    $userdir ||= "/tmp/bernese/user$$";
-    $datadir ||= "/tmp/bernese/data$$";
+    my $user=getlogin;
+    $userdir ||= "/tmp/bernese_$user/user$$";
+    $datadir ||= "/tmp/bernese_$user/data$$";
 
     if( -e $userdir )
     {
