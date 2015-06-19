@@ -47,7 +47,7 @@ sub new
     $pcfdir=~s/[\\\/][^\\\/]*$//;
     my $optdir;
     my $scriptdir;
-    if( $pcfdir =~ /[\\\/]PCF$/ )
+    if( $pcfdir =~ /(^|[\\\/])PCF$/ )
     {
         $optdir=substr($pcfdir,0,-3).'OPT';
         $scriptdir=substr($pcfdir,0,-3).'SCRIPT';
