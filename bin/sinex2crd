@@ -114,7 +114,7 @@ sinex2crd - Extract coordinates from SINEX file to Bernese .CRD file
 
 =head1 Synopsis
 
-    sinex2crd [-u] sinex_file crd_file [output_crd_file]
+    sinex2crd [options] sinex_file crd_file [output_crd_file]
     sinex2crd -h
 
 =head1 Description
@@ -131,35 +131,35 @@ Valid options are:
 
 =over
 
-= -u
+=item -u
 
 Update only - existing stations will be updated but no stations will 
 be added
 
-= -o
+=item -o
 
 Overwrite existing .CRD file - ignore any information currently in it.
 
-= -f flag
+=item -f flag
 
 Flag to apply to updated stations.  Default is to leave unchanged
 
-= -n flag
+=item -n flag
 
 Flag to apply to new stations.  Default is the same as the -f option,
 or if that is not defined then 'SNX'
 
-= -m #.###
+=item -m #.###
 
 Maximum acceptable difference in coordinates in metres.  Coordinates
 updates are not applied if the SINEX coordinate differs from the 
 input file coordinate by more than this amount.
 
-= -d datum
+=item -d datum
 
 Datum code to use for new Bernese coordinate files
 
-= -c 
+=item -c 
 
 Code only - do not include the SINEX file name for the station
 in the .CRD file for new stations
