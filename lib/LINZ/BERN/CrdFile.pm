@@ -24,7 +24,9 @@ Synopsis:
 
   $cf->add('Name of test','TEST',[-5171804.7406,574169.1541,-3675912.2389],'Ok');
 
-  my $new2 = LINZ::BERN::CrdFile::Station('TST2','',[-5171804.7406,574169.1541,-3675912.2389],'Ok');
+  my $name='TEST 05000M0000';
+  my $code='TST2';               # 4 letter abbreviation (not written to .CRD file)
+  my $new2 = LINZ::BERN::CrdFile::Station($name,$code,[-5171804.7406,574169.1541,-3675912.2389],'Ok');
   $cf->add($new2);
 
   my $teststn=$cf->station('TEST');

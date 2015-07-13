@@ -1,0 +1,180 @@
+#!/usr/bin/perl
+
+use strict;
+
+use Getopt::Std;
+use LINZ::BERN::CrdFile;
+use LINZ::GNSS::SinexFile;
+
+my %opts;
+getopts('vVocuhf:n:m:d:',\%opts);
+
+help(0) if $opts{h};
+help(1) if @ARGV < 2;
+
+my $snx=new LINZ::GNSS::SinexFile($ARGV[0],skip_covariance=>1);
+
+my $updateonly=$opts{u};
+my $overwrite=$opts{o};
+my $flag=$opts{f};
+my $newflag=$opts{n} // $flag // 'SNX';
+my $maxdiff=$opts{m} || 0;
+my $datum=$opts{d} || 'IGb08';
+my $verbose=$opts{V} ? 2 : $opts{v1} ? 1 : 0;
+my $codeonly=$opts{c};
+
+my $crdin=$ARGV[1];
+my $crdout=$ARGV[2] || $ARGV[1];
+
+$crdin='' if ! $updateonly && ! -f $crdin;
+$crdin='' if $overwrite;
+
+my $crd=new LINZ::BERN::CrdFile($crdin );
+
+my $maxoffset=0.0;
+my $nnew=0;
+my $nupd=0;
+my $nskip=0;
+
+foreach my $snxstn ($snx->stations())
+{
+
+    my $code=uc($snxstn->{code});
+    my $name=$codeonly ? $code : $code.' '.$snxstn->{name};
+    my $crdstn=$crd->station($name);
+
+    if( ! $crdstn )
+    {
+        next if $updateonly;
+        print "Adding station $code\n" if $verbose > 1;
+        my $newstn=new LINZ::BERN::CrdFile::Station($name,'',$snxstn->{xyz},$newflag);
+        $crd->add($newstn);
+        $nnew++;
+    }
+    else
+    {
+        my $xyz0=$crdstn->xyz();
+        my $xyz1=$snxstn->{xyz};
+        my $diff=sqrt(
+                ($xyz0->[0]-$xyz1->[0])**2+
+                ($xyz0->[1]-$xyz1->[1])**2+
+                ($xyz0->[2]-$xyz1->[2])**2);
+        if( $maxdiff && $diff > $maxdiff )
+        {
+            print "Offset for $code too large - not updating\n" if $verbose;
+            $nskip++;
+            next;
+        }
+        printf "Updating %s: offset %.3f\n",$code,$diff if $verbose > 1;
+        $crdstn->xyz($xyz1);
+        $crdstn->flag($flag) if $flag ne '';
+        $nupd++;
+        $maxoffset = $diff if $diff > $maxoffset;
+    }
+}
+
+if( ! $crdin )
+{
+    my ($startdate,$enddate)=$snx->obsDates();
+
+    $crd->datum();
+    $crd->epoch(($startdate+$enddate)/2);
+}
+
+$crd->filename($crdout);
+$crd->write();
+
+if( $verbose )
+{
+    print "$nnew stations added\n" if $nnew;
+    printf "%d stations updated - max coordinate difference %.4fm\n",
+        $nupd,$maxoffset if $nupd;
+    printf "%d stations not updated as offset larger than %.4fm\n",
+        $nskip,$maxdiff if $nskip;
+    print "No stations added or updated\n" if ! ($nnew || $nupd);
+}
+
+sub help
+{
+    my ($brief)=@_;
+    require Pod::Usage;
+    Pod::Usage::pod2usage(
+    {
+        -verbose=>$brief ? 99 : 2,
+        -sections=>'Synopsis',
+        -exitval=>2,
+    });
+}
+
+__DATA__
+
+=head1 Name
+
+sinex2crd - Extract coordinates from SINEX file to Bernese .CRD file
+
+=head1 Synopsis
+
+    sinex2crd [-u] sinex_file crd_file [output_crd_file]
+    sinex2crd -h
+
+=head1 Description
+
+Extract coordinates from a SINEX file to a bernese coordinate file.
+If the -u option is specified then only stations in the coordinate 
+file are updated, otherwise all stations in the original file are
+updated.  If an output coordinate file is specified then the output
+will be written to that.
+
+=head1 Options
+
+Valid options are:
+
+=over
+
+= -u
+
+Update only - existing stations will be updated but no stations will 
+be added
+
+= -o
+
+Overwrite existing .CRD file - ignore any information currently in it.
+
+= -f flag
+
+Flag to apply to updated stations.  Default is to leave unchanged
+
+= -n flag
+
+Flag to apply to new stations.  Default is the same as the -f option,
+or if that is not defined then 'SNX'
+
+= -m #.###
+
+Maximum acceptable difference in coordinates in metres.  Coordinates
+updates are not applied if the SINEX coordinate differs from the 
+input file coordinate by more than this amount.
+
+= -d datum
+
+Datum code to use for new Bernese coordinate files
+
+= -c 
+
+Code only - do not include the SINEX file name for the station
+in the .CRD file for new stations
+
+=item -v
+
+Verbose mode
+
+=item -h
+
+Prints help and exits
+
+
+
+=back
+
+=cut
+
