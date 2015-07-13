@@ -1,3 +1,9 @@
+liblinz-bern-perl (1.13.1-1) trusty; urgency=medium
+
+  * Fixing sinex2crd documentation and executable status
+
+ -- Chris Crook <ccrook@linz.govt.nz>  Tue, 14 Jul 2015 07:27:59 +1200
+
 liblinz-bern-perl (1.13.0-1) trusty; urgency=medium
 
   * Adding sinex2crd utility script
