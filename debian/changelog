@@ -1,3 +1,9 @@
+liblinz-bern-perl (1.13.3-1) trusty; urgency=medium
+
+  * Fixing handling of STDOUT and STDERR in Environment - making sinex2crd more compatible with Bernese
+
+ -- Chris Crook <ccrook@linz.govt.nz>  Thu, 16 Jul 2015 10:20:00 +1200
+
 liblinz-bern-perl (1.13.2-1) trusty; urgency=medium
 
   * Fix bug working out caller for error message
