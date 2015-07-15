@@ -12,15 +12,27 @@
 #
 
 use strict;
+use Archive::Zip qw/ :ERROR_CODES /;
 use LINZ::BERN::PcfFile;
+use Getopt::Std;
 
 my $syntax=<<EOD;
-get_pcf_files: Prints a list of files used by a Bernese PCF.
 
-Must be run in the GPSUSER directory.  The output list can be piped to,
-for example, tar to dump the PCF to a script directory.
+Synopsis: get_pcf_files PCF_file
+          get_pcf_files -z zipfile PCF_file
+
+Prints a list of files used by a Bernese PCF, or compiles them into
+a zip file.
+
+Must be run in the GPSUSER directory.  
 
 EOD
+
+my %opts;
+getopts("hz:",\%opts);
+
+die $syntax if $opts{h};
+my $zipfile=$opts{z};
 
 scalar(@ARGV)==1 || die $syntax;
 
@@ -41,14 +53,14 @@ my $pcff=LINZ::BERN::PcfFile->open($pcf);
 
 my @files=($pcf);
 my %scripts=();
-my %opts=();
+my %optdirs=();
 my %pan=();
 
 foreach my $pid ($pcff->pids())
 {
     $scripts{'SCRIPT/'.$pid->{script}}=1;
     my $optdir=$pid->{optdir};
-    $opts{$optdir}=1;
+    $optdirs{$optdir}=1;
     foreach my $p (@{$pid->{programs}})
     {
         $pan{"OPT/$optdir/$p.INP"}=1;
@@ -57,7 +69,7 @@ foreach my $pid ($pcff->pids())
 
 # Add menu panels
 
-foreach my $optdir (keys %opts)
+foreach my $optdir (keys %optdirs)
 {
     foreach my $f (glob "OPT/$optdir/MENU*.INP")
     {
@@ -70,9 +82,21 @@ push(@files,sort keys %pan);
 
 # If we've got to here then all looks OK and we should have the complete set of files...
 
-foreach my $f (@files )
+if( ! $zipfile )
 {
-    print "$f\n";
+    foreach my $f (@files )
+    {
+        print "$f\n";
+    }
 }
 
+my $zip=Archive::Zip->new();
+foreach my $f (@files)
+{
+    $zip->addFile($f);
+}
+if( $zip->writeToFileNamed($zipfile) != AZ_OK )
+{
+    die "Cannot create ZIP file $zipfile\n";
+}
 
