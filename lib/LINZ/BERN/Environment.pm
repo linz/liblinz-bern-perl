@@ -155,7 +155,7 @@ sub _bernmsg
 {
     my($fatal,$self,$message,$errtype)=@_;
     my $msgkey = $fatal ? '***' : '###';
-    my $caller=(caller(2))[1];
+    my $caller=(caller(1))[1];
     $caller=~s/.*[\\\/]//;
     $errtype ||= $caller;
     my $prefix=' 'x(7+length($errtype));
