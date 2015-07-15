@@ -64,18 +64,16 @@ sub new
     }
 
     my $sysout=expandValue($params->{SYSOUT});
-    open($outf,">",$sysout);
-    *STDOUT = $outf;
+    open(STDOUT,">",$sysout);
     if( $params->{ERRMRG} )
     {
-        $errf = $outf;
+        open(STDERR,">&STDOUT");
     }
     else
     {
         my $syserr=expandValue($params->{SYSERR});
-        open($errf,">",$syserr);
+        open(STDERR,">",$syserr);
     }
-    *STDERR = $errf;
 
     return bless {}, $class;
 }

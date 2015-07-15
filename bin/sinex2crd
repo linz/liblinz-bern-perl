@@ -20,7 +20,7 @@ my $flag=$opts{f};
 my $newflag=$opts{n} // $flag // 'SNX';
 my $maxdiff=$opts{m} || 0;
 my $datum=$opts{d} || 'IGb08';
-my $verbose=$opts{V} ? 2 : $opts{v1} ? 1 : 0;
+my $verbose=$opts{V} ? 2 : $opts{v} ? 1 : 0;
 my $codeonly=$opts{c};
 
 my $crdin=$ARGV[1];
@@ -36,62 +36,71 @@ my $nnew=0;
 my $nupd=0;
 my $nskip=0;
 
-foreach my $snxstn ($snx->stations())
+eval
 {
-
-    my $code=uc($snxstn->{code});
-    my $name=$codeonly ? $code : $code.' '.$snxstn->{name};
-    my $crdstn=$crd->station($name);
-
-    if( ! $crdstn )
+    foreach my $snxstn ($snx->stations())
     {
-        next if $updateonly;
-        print "Adding station $code\n" if $verbose > 1;
-        my $newstn=new LINZ::BERN::CrdFile::Station($name,'',$snxstn->{xyz},$newflag);
-        $crd->add($newstn);
-        $nnew++;
-    }
-    else
-    {
-        my $xyz0=$crdstn->xyz();
-        my $xyz1=$snxstn->{xyz};
-        my $diff=sqrt(
-                ($xyz0->[0]-$xyz1->[0])**2+
-                ($xyz0->[1]-$xyz1->[1])**2+
-                ($xyz0->[2]-$xyz1->[2])**2);
-        if( $maxdiff && $diff > $maxdiff )
+
+        my $code=uc($snxstn->{code});
+        my $name=$codeonly ? $code : $code.' '.$snxstn->{name};
+        my $crdstn=$crd->station($name);
+
+        if( ! $crdstn )
         {
-            print "Offset for $code too large - not updating\n" if $verbose;
-            $nskip++;
-            next;
+            next if $updateonly;
+            print " Adding station $code\n" if $verbose > 1;
+            my $newstn=new LINZ::BERN::CrdFile::Station($name,'',$snxstn->{xyz},$newflag);
+            $crd->add($newstn);
+            $nnew++;
         }
-        printf "Updating %s: offset %.3f\n",$code,$diff if $verbose > 1;
-        $crdstn->xyz($xyz1);
-        $crdstn->flag($flag) if $flag ne '';
-        $nupd++;
-        $maxoffset = $diff if $diff > $maxoffset;
+        else
+        {
+            my $xyz0=$crdstn->xyz();
+            my $xyz1=$snxstn->{xyz};
+            my $diff=sqrt(
+                    ($xyz0->[0]-$xyz1->[0])**2+
+                    ($xyz0->[1]-$xyz1->[1])**2+
+                    ($xyz0->[2]-$xyz1->[2])**2);
+            if( $maxdiff && $diff > $maxdiff )
+            {
+                print " Offset for $code too large - not updating\n" if $verbose;
+                $nskip++;
+                next;
+            }
+            printf " Updating %s: offset %.3f\n",$code,$diff if $verbose > 1;
+            $crdstn->xyz($xyz1);
+            $crdstn->flag($flag) if $flag ne '';
+            $nupd++;
+            $maxoffset = $diff if $diff > $maxoffset;
+        }
     }
-}
 
-if( ! $crdin )
+    if( ! $crdin )
+    {
+        my ($startdate,$enddate)=$snx->obsDates();
+
+        $crd->datum();
+        $crd->epoch(($startdate+$enddate)/2);
+    }
+
+    $crd->filename($crdout);
+    $crd->write();
+
+    if( $verbose )
+    {
+        print " $nnew stations added\n" if $nnew;
+        printf " %d stations updated - max coordinate difference %.4fm\n",
+            $nupd,$maxoffset if $nupd;
+        printf " %d stations not updated as offset larger than %.4fm\n",
+            $nskip,$maxdiff if $nskip;
+        print " No stations added or updated\n" if ! ($nnew || $nupd);
+    }
+};
+if( $@ )
 {
-    my ($startdate,$enddate)=$snx->obsDates();
-
-    $crd->datum();
-    $crd->epoch(($startdate+$enddate)/2);
-}
-
-$crd->filename($crdout);
-$crd->write();
-
-if( $verbose )
-{
-    print "$nnew stations added\n" if $nnew;
-    printf "%d stations updated - max coordinate difference %.4fm\n",
-        $nupd,$maxoffset if $nupd;
-    printf "%d stations not updated as offset larger than %.4fm\n",
-        $nskip,$maxdiff if $nskip;
-    print "No stations added or updated\n" if ! ($nnew || $nupd);
+    my $msg=$@;
+    $msg=~s/\^\s+at\s+.*\s+line\s+\d+\.$//;
+    print " $msg\n";
 }
 
 sub help
