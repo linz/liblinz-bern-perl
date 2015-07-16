@@ -23,6 +23,7 @@ use LINZ::BERN::SessionFile;
 use LINZ::BERN::CrdFile;
 use LINZ::GNSS::RinexFile;
 use LINZ::GNSS::Time qw/seconds_datetime time_elements year_seconds seconds_julianday/;
+use Archive::Zip qw/ :ERROR_CODES /;
 use File::Path qw/make_path remove_tree/;
 use File::Basename;
 use File::Copy;
@@ -148,6 +149,17 @@ The location in which the user environment will be created.  The default is /tmp
 A new line delimited string of settings, as per default settings example below.  These are 
 used to construct the user environment
 
+=item CustomUserFiles=>zipfilename
+
+If the default user settings are used then these can either include links to the 
+system PCF and options (ie in the bernese installation), or have blank directories
+defined for installing a custom PCF.  This can be the name of a zip file in which
+case the contents of the file will be installed into the user directory.  (The
+zip file could be created using get_pcf_files ...).  The file can specify a number
+of space separated zip files.  (File names cannot include whitespace).
+
+A filename of "empty" creates a user directory without any PCF files.
+
 =item SourceUserDirectory
 
 Location from which user files are copied or to which symbolic links are created.  The 
@@ -208,8 +220,9 @@ Copies the specified file
 =back
 
 The user directory settings define how the user directory is constructed, by copying or 
-linking selected files from a selected environment.  It can define the CLIENT_ENV and
-CPU_FILE settings that will be used to run jobs in the constructed enviroment.  
+linking selected files from a selected environment, or unzipping a file into the 
+user directory.  It can also define the CLIENT_ENV and CPU_FILE settings that will be used 
+to run jobs in the constructed enviroment.  
 
 The default settings are as follows:
 
@@ -229,6 +242,10 @@ The default settings are as follows:
   copy ${SRC}/PAN/RUNBPE.INP ${U}/PAN/RUNBPE.INP
   copy ${SRC}/PAN/${CPU_FILE}.CPU ${U}/PAN/${CPU_FILE}.CPU
 
+To install a zip file use the command
+
+  unzip zip_file-name
+
 For the data directory settings the default is 
 
   copy ${SRC}/PAN/MENU_CMP.INP ${P}/MENU_CMP.INP
@@ -237,9 +254,6 @@ For the data directory settings the default is
 
 our $DefaultBernUserSettings=<<'EOD';
 CLIENT_ENV ${U}/LOADGPS.setvar
-symlink ${SRC}/OPT ${U}/OPT
-symlink ${SRC}/PCF ${U}/PCF
-symlink ${SRC}/USERSCPT ${SRC}/SCRIPT ${U}/SCRIPT
 makedir ${U}/WORK
 makedir ${U}/PAN
 copy ${SRC}/PAN/EDITPCF.INP ${U}/PAN/EDITPCF.INP
@@ -251,6 +265,18 @@ copy ${SRC}/PAN/MENU_VAR.INP ${U}/PAN/MENU_VAR.INP
 copy ${SRC}/PAN/NEWCAMP.INP ${U}/PAN/NEWCAMP.INP
 copy ${SRC}/PAN/RUNBPE.INP ${U}/PAN/RUNBPE.INP
 copy ${SRC}/PAN/${CPU_FILE}.CPU ${U}/PAN/${CPU_FILE}.CPU
+EOD
+
+our $DefaultBernUserSettingsSystemPCF=<<'EOD';
+symlink ${SRC}/OPT ${U}/OPT
+symlink ${SRC}/PCF ${U}/PCF
+symlink ${SRC}/USERSCPT ${SRC}/SCRIPT ${U}/SCRIPT
+EOD
+
+our $DefaultBernUserSettingsUserPCF=<<'EOD';
+makedir ${U}/OPT
+makedir ${U}/PCF
+makedir ${U}/SCRIPT
 EOD
 
 our $DefaultBernDataSettings=<<'EOD';
@@ -304,7 +330,24 @@ sub CreateRuntimeEnvironment
         my $src = $options{SourceUserDirectory} || $ENV{X};
         die "Source for Bern user environment $src missing\n" if ! -d $src;
         
-        my $settings=$options{UserDirectorySettings} || $DefaultBernUserSettings; 
+        my $settings=$options{UserDirectorySettings};
+        if( ! $settings )
+        { 
+            $settings=$DefaultBernUserSettings; 
+            my $customzip=$options{CustomUserFiles};
+            if( $customzip )
+            {
+                $settings .= $DefaultBernUserSettingsUserPCF; 
+                if( lc($customzip) ne 'empty' )
+                {
+                    $settings .= "\nunzip $customzip";
+                }
+            }
+            else
+            {
+                $settings .= $DefaultBernUserSettingsSystemPCF; 
+            }
+        }
 
         if( ! $data_exists )
         {
@@ -366,6 +409,33 @@ sub CreateRuntimeEnvironment
             {
                 copy($values[0],$values[1]) ||
                     die "Cannot copy $values[0] to $values[1]\n";
+            }
+            elsif( $key eq 'unzip'  )
+            {
+                foreach my $zipfile (@values)
+                {
+                    my $userdir=$ENV{U};
+                    my $zip=Archive::Zip->new();
+                    if( $zip->read($zipfile) != AZ_OK )
+                    {
+                        die "Cannot open GPSUSER zip file $zipfile\n";
+                    }
+
+                    foreach my $m ($zip->members())
+                    {
+                        if( $m->isTextFile() || $m->isBinaryFile() )
+                        {
+                            my $filename=$m->fileName();
+                            my $extname = $userdir;
+                            $extname .= '/' if $filename !~ /^\//;
+                            $extname .= $filename;
+                            if( $m->extractToFileNamed($extname) != AZ_OK )
+                            {
+                                die "Cannot extract $filename from $zipfile\n";
+                            }
+                        }
+                    }
+                }
             }
             else
             {
