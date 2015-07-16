@@ -1,3 +1,9 @@
+liblinz-bern-perl (1.15.0-2) trusty; urgency=medium
+
+  * Adding new perl module dependency
+
+ -- Chris Crook <ccrook@linz.govt.nz>  Fri, 17 Jul 2015 08:09:36 +1200
+
 liblinz-bern-perl (1.15.0-1) trusty; urgency=medium
 
   * Adding capability for custom user PCF
