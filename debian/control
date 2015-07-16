@@ -10,6 +10,7 @@ Package: liblinz-bern-perl
 Architecture: all
 Depends: ${misc:Depends},
     libconfig-general-perl,
+    libarchive-zip-perl,
     libdbd-sqlite3-perl,
     libdbi-perl,
     libjson-perl,
