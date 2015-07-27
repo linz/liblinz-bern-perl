@@ -14,6 +14,7 @@ Depends: ${misc:Depends},
     libdbd-sqlite3-perl,
     libdbi-perl,
     libjson-perl,
+    libperlio-gzip-perl,
     liblinz-gnss-perl
 Description: Perl modules for LINZ Bernese utilities
  LINZ::BERN support modules for Bernese utilities

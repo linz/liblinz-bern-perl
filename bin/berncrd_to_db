@@ -1,0 +1,240 @@
+#!/usr/bin/perl 
+
+eval 'exec /usr/bin/perl  -S $0 ${1+"$@"}'
+    if 0; # not running under some shell
+#
+#  Script to extract data from SINEX file into an Sqlite database
+#  Records the station coords and (station only) covariance for each
+#  station in the SINEX file.  
+
+use strict;
+use Getopt::Std;
+use DBI;
+use File::Find;
+use LINZ::BERN::CrdFile;
+use LINZ::GNSS::Time qw/seconds_datetime/;
+
+my $create_sql=<<END_SQL;
+create table mark_coordinate
+(
+    code varchar(4) not null,
+    solution_type varchar(20) not null,
+    epoch datetime not null,
+    X double not null,
+    Y double not null,
+    Z double not null,
+    CXX double not null,
+    CXY double not null,
+    CYY double not null,
+    CXZ double not null,
+    CYZ double not null,
+    CZZ double not null,
+    primary key (code, solution_type, epoch )
+)
+END_SQL
+
+my $insert_sql=<<END_SQL;
+insert or replace into mark_coordinate (
+    code, solution_type, epoch,
+    X, Y, Z, CXX, CXY, CYY, CXZ, CYZ, CZZ
+    ) values ( ?, ?, ?, ?, ?, ?, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 )
+END_SQL
+
+my $count_sql='select count(*) from mark_coordinate';
+
+my %opts;
+getopts('p:hv',\%opts);
+
+help(!$opts{h}) if $opts{h} || ! @ARGV;
+
+my $verbose=$opts{v};
+my $pattern=$opts{p};
+
+my ($dbfile,$solntype,@crdfiles)=@ARGV;
+
+if( $pattern )
+{
+    $pattern =~ s/\./\\./g;
+    $pattern =~ s/\#/\\d/g;
+    $pattern =~ s/\?/./g;
+    $pattern =~ s/\*/.*/g;
+    $pattern='(^|[\\\\\\/])'.$pattern;
+    $pattern = '('.$pattern.')$';
+}
+else
+{ 
+    $pattern='\\.CRD(?:\\.gz)?$';
+}
+my $filere;
+eval
+{
+    $filere=qr/$pattern/i;
+};
+if( $@ )
+{
+    print "Invalid file pattern $pattern\n";
+}
+
+my $dbh=openDb($dbfile);
+
+print "Loading mark coordinate data into $dbfile\n" if $verbose;
+
+foreach my $crdfile (@crdfiles)
+{
+    if( ! -e $crdfile )
+    {
+        print "Bernese CRD file $crdfile does not exist\n";
+        next;
+    }
+    elsif( -d $crdfile )
+    {
+        loadDir($dbh,$crdfile,$filere,$solntype);
+        next;
+    }
+    else
+    {
+        loadFile($dbh,$crdfile,$solntype);
+    }
+}
+
+$dbh->disconnect();
+
+sub openDb
+{
+    my( $dbfile ) = @_;
+    my $newfile= ! -f $dbfile;
+    my $dbh=DBI->connect("dbi:SQLite:dbname=$dbfile","","",{AutoCommit=>0})
+        || die "Cannot open $dbfile as an SQLite database\n";
+    if( $newfile )
+    {
+        $dbh->do($create_sql) || die "Cannot create mark_coordinate table in $dbfile\n" ;
+        $dbh->commit();
+    }
+    my $sth=$dbh->prepare($insert_sql) || die "Cannot insert data into $dbfile - invalid database\n";
+    $sth->finish;
+    return $dbh;
+}
+
+sub loadDir
+{
+    my($dbh,$dirname,$filere,$solntype) = @_;
+    my $nfile=0;
+    my @files=();
+    find( {
+            wanted=> sub { 
+                push(@files,$_) if -f $_ && /$filere/;
+            },
+            no_chdir=>1,
+        }, $dirname );
+    foreach my $file (sort @files)
+    {
+        $nfile++ if loadFile($dbh,$file,$solntype); 
+    }
+    print "\n$nfile files loaded from directory $dirname\n" if $verbose;
+}
+
+sub countData
+{
+    my ($dbh)=@_;
+    my ($count)=$dbh->selectrow_array($count_sql);
+    return $count;
+}
+
+sub loadFile
+{
+    my( $dbh, $crdfile, $solntype) = @_;
+    print "Loading $crdfile\n" if $verbose;
+
+    my $crd;
+    eval
+    {
+        # Uncompress .gz files
+        $crd=LINZ::BERN::CrdFile->new( $crdfile );
+    };
+    if( $@ )
+    {
+        print "Cannot load $crdfile\n  $@\n";
+        return 0;
+    }
+    my $count=countData($dbh);
+    my $nstn=0;
+    my $sth=$dbh->prepare($insert_sql);
+    my $epoch=seconds_datetime($crd->epoch);
+    foreach my $stn ($crd->stations())
+    {
+        $nstn++;
+        my $xyz=$stn->xyz;
+        $sth->execute(
+            $stn->code, 
+            $solntype, 
+            $epoch,
+            $xyz->[0], 
+            $xyz->[1], 
+            $xyz->[2],
+        );
+    }
+    $sth->finish;
+    $dbh->commit;
+    if( $verbose )
+    {
+        $count = countData($dbh) - $count;
+        print "    Loaded $nstn stations";
+        print " ($count new records)" if $count < $nstn;
+        print "\n";
+    }
+    return $nstn;
+}
+
+sub help
+{
+    my ($brief)=@_;
+    require Pod::Usage;
+    Pod::Usage::pod2usage(
+    {
+        -verbose=>$brief ? 99 : 2,
+        -sections=>'Synopsis',
+        -exitval=>2,
+    });
+}
+
+__DATA__
+
+=head1 Name
+
+berncrd_to_db - extract coordinate information from SINEX into database
+
+=head1 Synopsis
+
+    berncrd_to_db [-v] database solution_type crd_file ...
+    berncrd_to_db [-p pattern] [-v] database solution_type directory
+    berncrd_to_db -h
+
+=head1 Description
+
+Extracts the coordinate information from a Bernese CRD
+file into an Sqlite database.  If a directory is specified then 
+tries to identify all the crd files in the directory.
+
+Each coordinate is associated with a station code, solution epoch,
+and solution type (the solution type is specified on the command
+line).  This defines a unique key, and existing solutions will be
+over-ridden.
+
+=head1 Options
+
+=over
+
+=item -p pattern
+
+Defines a pattern identifying the Bernese CRD file to process (only 
+applies if the directory option is specified).  The pattern 
+can include # to represent any digit, ? to represent any character,
+and * to represent any sequence of characters.  If not specified then
+any file ending .CRD or .CRD.gz will be processed.
+
+=item -v
+
+Verbose mode
+
+=cut
+

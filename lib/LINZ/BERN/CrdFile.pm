@@ -8,7 +8,8 @@ Package to handle Bernese .CRD files.
 
 Synopsis:
 
-  my $fn = 'STA/TEST.CRD';
+  my $filename = 'STA/TEST.CRD';
+  my $filename = 'STA/TEST.CRD.gz';
   my $cf = new LINZ::BERN::CrdFile( $filename );
   foreach my $stn ($cf->stations())
   {
@@ -40,9 +41,12 @@ Synopsis:
   $cf->createAbbreviations();
   $cf->writeAbbreviations($filename);
 
+
+
 =cut
 
 use Carp;
+use PerlIO::gzip;
 use LINZ::GNSS::Time qw/datetime_seconds seconds_datetime/;
 
 sub new
@@ -133,7 +137,8 @@ sub read
 {
     my($self,$filename) = @_;
     $filename ||= $self->{filename};
-    open(my $f, $filename) || croak("Cannot open BERN coordinate file $filename");
+    my $method = $filename =~ /\.gz$/ ? "<:gzip"  : "gzip";
+    open(my $f, $method, $filename) || croak("Cannot open BERN coordinate file $filename");
     my $line=<$f>;
     $line=<$f>;
     $line=<$f>;
