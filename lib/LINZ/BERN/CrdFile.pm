@@ -137,7 +137,7 @@ sub read
 {
     my($self,$filename) = @_;
     $filename ||= $self->{filename};
-    my $method = $filename =~ /\.gz$/ ? "<:gzip"  : "gzip";
+    my $method = $filename =~ /\.gz$/ ? "<:gzip"  : "<";
     open(my $f, $method, $filename) || croak("Cannot open BERN coordinate file $filename");
     my $line=<$f>;
     $line=<$f>;
