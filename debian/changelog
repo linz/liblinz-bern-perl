@@ -1,3 +1,9 @@
+liblinz-bern-perl (1.16.1-1) trusty; urgency=medium
+
+  * Bug fix opening crdfile
+
+ -- Chris Crook <ccrook@linz.govt.nz>  Tue, 28 Jul 2015 14:17:12 +1200
+
 liblinz-bern-perl (1.16.0-1) trusty; urgency=medium
 
   * Adding berncrd_to_db utility to extract coords from Bernese CRD file into database
