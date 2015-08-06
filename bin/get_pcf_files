@@ -88,15 +88,18 @@ if( ! $zipfile )
     {
         print "$f\n";
     }
+
 }
 
-my $zip=Archive::Zip->new();
-foreach my $f (@files)
+else
 {
-    $zip->addFile($f);
+    my $zip=Archive::Zip->new();
+    foreach my $f (@files)
+    {
+        $zip->addFile($f);
+    }
+    if( $zip->writeToFileNamed($zipfile) != AZ_OK )
+    {
+        die "Cannot create ZIP file $zipfile\n";
+    }
 }
-if( $zip->writeToFileNamed($zipfile) != AZ_OK )
-{
-    die "Cannot create ZIP file $zipfile\n";
-}
-
