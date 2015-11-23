@@ -1,3 +1,9 @@
+liblinz-bern-perl (1.17.2-1) trusty; urgency=medium
+
+  * Fixing scripts to read abbreviations file
+
+ -- Chris Crook <ccrook@linz.govt.nz>  Tue, 24 Nov 2015 09:51:08 +1300
+
 liblinz-bern-perl (1.17.1-1) trusty; urgency=medium
 
   * Fixing name of plot_bernese_baselines
