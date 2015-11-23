@@ -1,3 +1,9 @@
+liblinz-bern-perl (1.17.0-1) trusty; urgency=medium
+
+  * Added script for writing Bernese baselines plot file
+
+ -- Chris Crook <ccrook@linz.govt.nz>  Tue, 24 Nov 2015 06:57:47 +1300
+
 liblinz-bern-perl (1.16.2-1) trusty; urgency=medium
 
   * Fixing zip file bug
