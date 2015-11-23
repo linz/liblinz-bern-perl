@@ -13,7 +13,7 @@ use LINZ::BERN::CrdFile;
 use LINZ::Geodetic::Ellipsoid qw/GRS80/;
 
 my %opts=();
-getopts('j:b:c:hv',\%opts);
+getopts('j:b:c:a:hv',\%opts);
 
 help(!$opts{h}) if $opts{h} || (@ARGV != 1 && @ARGV != 2);
 
@@ -21,8 +21,9 @@ my $jobdir=$opts{j} // '.';
 my $jobdirname=$jobdir eq '.' ? 'Current directory' : $jobdir;
 # Preferred and second choice crd file prefix
 my $verbose=$opts{v};
-my @crdpfx= $opts{c} ? ($opts{c},$opts{c}) : ('F1_','');
-my $bslpfx= $opts{b} // 'BSL';
+my @crdpfx=$opts{c} ? ($opts{c},$opts{c}) : ('F1_','');
+my $bslpfx=$opts{b} // 'BSL';
+my $abbpfx=$opts{a} // '';
 my $csvfile=$ARGV[0];
 my $csvstn=$ARGV[1];
 
@@ -32,6 +33,7 @@ $bslpfx='' if $bslpfx eq '*';
 my @bslfiles=();
 my @crdfiles=();
 my $crdpref=undef;
+my $abbfile=undef;
 
 die "$jobdirname doesn't appear to be a Bernese campaign directory\n"
     if ! -d "$jobdir/STA" || ! -f "$jobdir/STA/SESSIONS.SES";
@@ -53,6 +55,10 @@ foreach my $fn (readdir($sta))
     {
         push(@bslfiles,$fn) if substr($fn,0,length($bslpfx)) eq $bslpfx;
     }
+    elsif( $fn =~ '\.ABB$' && ! $abbfile)
+    {
+        $abbfile=$fn if substr($fn,0,length($abbpfx)) eq $abbpfx;
+    }
 }
 closedir($sta);
 
@@ -61,11 +67,17 @@ die "Cannot find CRD file\n" if ! $crdfile;
 die "Cannot find baseline file\n" if ! @bslfiles;
 
 print "Using coordinate file $crdfile\n" if $verbose;
+print "Using abbreviations file $abbfile\n" if $abbfile && $verbose;
 
-my $crds=new LINZ::BERN::CrdFile("$jobdir/STA/$crdfile");
+my $crds=new LINZ::BERN::CrdFile("$jobdir/STA/$crdfile","$jobdir/STA/$abbfile");
 
 my @baselines=();
 my %stations=();
+my %abb2;
+foreach my $stn ($crds->stations())
+{
+    $abb2{$stn->abb2()}=$stn;
+}
 
 foreach my $bslfile (@bslfiles)
 {
@@ -78,16 +90,39 @@ foreach my $bslfile (@bslfiles)
     }
     while( my $bsl=<$bslf> )
     {
-        my $name0=substr($bsl,0,16);
-        my $name1=substr($bsl,17);
-        $name0 =~ s/\s*$//;
-        $name1 =~ s/\s*$//;
-        my $st0=$crds->station($name0);
-        my $st1=$crds->station($name1);
-        if( ! $st0 || ! $st1 )
+        $bsl =~ s/\s*$//;
+        my ($name0, $name1, $st0, $st1);
+        if( $bsl =~ /^(\w\w)(\w\w)\s*$/)
         {
-            print "Coordinate file doesn't contain $name0\n" if ! $st0;
-            print "Coordinate file doesn't contain $name1\n" if ! $st1;
+            my($abb0,$abb1)=($1,$2);
+            $st0=$abb2{$abb0};
+            $st1=$abb2{$abb1};
+            if( ! $st0 || ! $st1 )
+            {
+                print "No station for abbreviation $abb0\n" if ! $st0;
+                print "No station for abbreviation $abb1\n" if ! $st1;
+                next;
+            }
+
+        }
+        elsif( length($bsl) > 17 )
+        {
+
+            $name0=substr($bsl,0,16);
+            $name1=substr($bsl,17);
+            $name0 =~ s/\s*$//;
+            $name1 =~ s/\s*$//;
+            $st0=$crds->station($name0);
+            $st1=$crds->station($name1);
+            if( ! $st0 || ! $st1 )
+            {
+                print "Coordinate file doesn't contain $name0\n" if ! $st0;
+                print "Coordinate file doesn't contain $name1\n" if ! $st1;
+                next;
+            }
+        }
+        else
+        {
             next;
         }
         push( @baselines, [$st0, $st1, $bslfile] );
@@ -131,12 +166,15 @@ if( $csvstn )
 {
     open(my $stnf, ">$csvstn") || die "Cannot open $csvstn\n";
     print $stnf "name,lon,lat\n";
+    my $nstations=0;
     foreach my $name (sort(keys %latlon))
     {
         my $llh=$latlon{$name};
         print $stnf "\"$name\",$llh->[0],$llh->[1]\n";
+        $nstations++;
     }
     close($stnf);
+    print "$nstations stations written to $csvstn\n" if $verbose;
 }
 
 
@@ -167,7 +205,8 @@ plot_bernese_baselines - extract baselines from a bernese job to a wkt CSV file
     Options:
         -j campaign_dir
         -c crd_file_prefix
-        -b baseline_filename
+        -b baseline_file_prefix
+        -a abbrev_file_prefix
 
 =head1 Description
 
@@ -191,8 +230,13 @@ directory.
 
 =item -b baseline_file_prefix
 
-The name of the baseline file(s) to use.  Default prefix is BSL.  Default
+The prefix of the baseline file(s) to use.  Default prefix is BSL.  Default
 extension is .BSL.  
+
+=item -a abbrev_file_prefix
+
+The prefix of the abbreviations file from which station abbreviations are 
+read.  Otherwise the first .ABB file found will be used.
 
 =item -v
 

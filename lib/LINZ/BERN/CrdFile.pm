@@ -11,6 +11,7 @@ Synopsis:
   my $filename = 'STA/TEST.CRD';
   my $filename = 'STA/TEST.CRD.gz';
   my $cf = new LINZ::BERN::CrdFile( $filename );
+  my $cf = new LINZ::BERN::CrdFile( $filename, $abbrevfile );
   foreach my $stn ($cf->stations())
   {
     my $xyz=$stn->xyz();
@@ -38,10 +39,9 @@ Synopsis:
   $cf->write();
 
   # Note: this creates/updates the code and abb2 members
+  $cf->readAbbreviations($filename);
   $cf->createAbbreviations();
   $cf->writeAbbreviations($filename);
-
-
 
 =cut
 
@@ -51,7 +51,7 @@ use LINZ::GNSS::Time qw/datetime_seconds seconds_datetime/;
 
 sub new
 {
-    my($class,$filename) = @_;
+    my($class,$filename,$abbfile) = @_;
     my $self=bless
     {
         filename=>$filename,
@@ -64,6 +64,7 @@ sub new
     {
         $self->read();
     }
+    $self->readAbbreviations($abbfile) if $abbfile;
     return $self;
 }
 
@@ -214,6 +215,27 @@ sub write
         printf $f "%.3d  %-15.15s %15.5f%15.5f%15.5f    %s\n",
             $ns,$s->name,$xyz->[0],$xyz->[1],$xyz->[2],$s->{flag};
     }
+}
+
+sub readAbbreviations
+{
+    my ($self,$filename) = @_;
+    croak("Abbreviations file $filename does not exist\n") if ! -f $filename;
+    open( my $abbf, $filename ) || croak("Cannot open abbreviations file $filename\n");
+    for( my $i=0; $i<5; $i++ ){ my $skip=<$abbf>;}
+    while( my $line=<$abbf> )
+    {
+        next if $line !~ /^(\w[\w\s]{15})\s{9}(\w\w\w\w)\s{5}(\w\w)(?:\s|$)/;
+        my ($name,$code,$abb2) = ($1,$2,$3);
+        $name =~ s/\s*$//;
+        my $stn=$self->station($name);
+        if( $stn )
+        {
+            $stn->code($code);
+            $stn->abb2($abb2);
+        }
+    }
+    close($abbf);
 }
 
 sub createAbbreviations
