@@ -1,0 +1,203 @@
+#!/usr/bin/perl
+
+eval 'exec /usr/bin/perl  -S $0 ${1+"$@"}'
+    if 0; # not running under some shell
+#
+#  Script to generate a file for plotting baselines used in Bernese 
+#  processing
+
+use strict;
+use Getopt::Std;
+use File::Find;
+use LINZ::BERN::CrdFile;
+use LINZ::Geodetic::Ellipsoid qw/GRS80/;
+
+my %opts=();
+getopts('j:b:c:hv',\%opts);
+
+help(!$opts{h}) if $opts{h} || (@ARGV != 1 && @ARGV != 2);
+
+my $jobdir=$opts{j} // '.';
+my $jobdirname=$jobdir eq '.' ? 'Current directory' : $jobdir;
+# Preferred and second choice crd file prefix
+my $verbose=$opts{v};
+my @crdpfx= $opts{c} ? ($opts{c},$opts{c}) : ('F1_','');
+my $bslpfx= $opts{b} // 'BSL';
+my $csvfile=$ARGV[0];
+my $csvstn=$ARGV[1];
+
+$crdpfx[0]='' if $crdpfx[0] eq '*';
+$bslpfx='' if $bslpfx eq '*';
+
+my @bslfiles=();
+my @crdfiles=();
+my $crdpref=undef;
+
+die "$jobdirname doesn't appear to be a Bernese campaign directory\n"
+    if ! -d "$jobdir/STA" || ! -f "$jobdir/STA/SESSIONS.SES";
+
+opendir(my $sta,"$jobdir/STA");
+foreach my $fn (readdir($sta))
+{
+    my $fullname="$jobdir/STA/$fn";
+    next if ! -f $fullname;
+    if( $fn =~ '\.CRD$' )
+    {
+        $crdpref=$fn
+            if ! $crdpref && substr($fn,0,length($crdpfx[0])) eq $crdpfx[0];
+
+        push(@crdfiles,$fn) 
+            if substr($fn,0,length($crdpfx[1])) eq $crdpfx[1];
+    }
+    elsif( $fn =~ '\.BSL$' )
+    {
+        push(@bslfiles,$fn) if substr($fn,0,length($bslpfx)) eq $bslpfx;
+    }
+}
+closedir($sta);
+
+my $crdfile=$crdpref ? $crdpref : (sort(@crdfiles))[0];
+die "Cannot find CRD file\n" if ! $crdfile;
+die "Cannot find baseline file\n" if ! @bslfiles;
+
+print "Using coordinate file $crdfile\n" if $verbose;
+
+my $crds=new LINZ::BERN::CrdFile("$jobdir/STA/$crdfile");
+
+my @baselines=();
+my %stations=();
+
+foreach my $bslfile (@bslfiles)
+{
+    print "Reading baselines from $bslfile\n" if $verbose;
+    my $bslf;
+    if( ! open($bslf, "$jobdir/STA/$bslfile") )
+    {
+        print("Cannot open baseline file $bslfile\n");
+        next;
+    }
+    while( my $bsl=<$bslf> )
+    {
+        my $name0=substr($bsl,0,16);
+        my $name1=substr($bsl,17);
+        $name0 =~ s/\s*$//;
+        $name1 =~ s/\s*$//;
+        my $st0=$crds->station($name0);
+        my $st1=$crds->station($name1);
+        if( ! $st0 || ! $st1 )
+        {
+            print "Coordinate file doesn't contain $name0\n" if ! $st0;
+            print "Coordinate file doesn't contain $name1\n" if ! $st1;
+            next;
+        }
+        push( @baselines, [$st0, $st1, $bslfile] );
+        $stations{$name0}=$st0 if ! exists $stations{$name0};
+        $stations{$name1}=$st1 if ! exists $stations{$name1};
+    }
+}
+
+if( ! @baselines )
+{
+    die "No baselines found\n";
+}
+
+my %latlon=();
+foreach my $stn (values(%stations))
+{
+    my $xyz=$stn->xyz();
+    my $llh=GRS80->geodetic($xyz);
+    $latlon{$stn->name}=[sprintf("%.7f",$llh->[1]),sprintf("%.7f",$llh->[0])]
+}
+
+open( my $csvf, ">$csvfile" ) || die "Cannot open output CSV file";
+print $csvf "name0,name1,filename,wkt\n";
+my $nbaselines=0;
+foreach my $baseline (@baselines)
+{
+    my ($stn0, $stn1, $file) = @$baseline;
+    my $name0=$stn0->name;
+    my $name1=$stn1->name;
+    $file=~s/\..*//;
+    my $llh0=$latlon{$name0};
+    my $llh1=$latlon{$name1};
+    my $wkt="LINESTRING($llh0->[0] $llh0->[1],$llh1->[0] $llh1->[1])";
+    print $csvf "\"$name0\",\"$name1\",\"$file\",\"$wkt\"\n";
+    $nbaselines++;
+}
+close($csvf);
+print "$nbaselines baselines written to $csvfile\n" if $verbose;
+
+if( $csvstn )
+{
+    open(my $stnf, ">$csvstn") || die "Cannot open $csvstn\n";
+    print $stnf "name,lon,lat\n";
+    foreach my $name (sort(keys %latlon))
+    {
+        my $llh=$latlon{$name};
+        print $stnf "\"$name\",$llh->[0],$llh->[1]\n";
+    }
+    close($stnf);
+}
+
+
+
+sub help
+{
+    my ($brief)=@_;
+    require Pod::Usage;
+    Pod::Usage::pod2usage(
+    {
+        -verbose=>$brief ? 99 : 2,
+        -sections=>'Synopsis',
+        -exitval=>2,
+    });
+}
+
+__DATA__
+
+=head1 Name
+
+plot_bernese_baselines - extract baselines from a bernese job to a wkt CSV file
+
+=head1 Synopsis
+
+    plot_bernese_baselines [options] baseline_csv_file [station_csv_file]
+    plot_bernese_baselines -h
+
+    Options:
+        -j campaign_dir
+        -c crd_file_prefix
+        -b baseline_filename
+
+=head1 Description
+
+Extracts baselines used in a Bernese job into a CSV file.  The CSV file 
+contains the baseline stations, lon/lat/ehgt coordinates, and a wkt 
+definition of a LINESTRING for plotting.
+
+=head1 Options
+
+=over
+
+=item -j     
+
+The Bernese job campaign directory (default current directory)
+
+=item -c crd_file_prefix
+
+The coordinate file prefix of the coordinate file to use.  Default is to
+use F1_... if that exists, otherwise the first .CRD file found in the STA
+directory.
+
+=item -b baseline_file_prefix
+
+The name of the baseline file(s) to use.  Default prefix is BSL.  Default
+extension is .BSL.  
+
+=item -v
+
+Verbose mode (more output!)
+
+=back
+
+=cut
