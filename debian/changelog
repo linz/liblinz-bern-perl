@@ -1,3 +1,9 @@
+liblinz-bern-perl (1.17.1-1) trusty; urgency=medium
+
+  * Fixing name of plot_bernese_baselines
+
+ -- Chris Crook <ccrook@linz.govt.nz>  Tue, 24 Nov 2015 06:59:51 +1300
+
 liblinz-bern-perl (1.17.0-1) trusty; urgency=medium
 
   * Added script for writing Bernese baselines plot file
