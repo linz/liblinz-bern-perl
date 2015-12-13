@@ -26,6 +26,7 @@ Package to handle Bernese SESSIONS.SES file.
 
 Synopsis:
 
+  use LINZ::BERN::SessionFile;
   use LINZ::GNSS::Time qw/datetime_seconds/;
 
   my $filename = 'STA/SESSIONS.SES';
@@ -237,10 +238,10 @@ sub sessionStartEnd
 {
     my ($self,$sessid,$year) = @_;
 
-    croak("Invalid session id $sessid passed to LINZ::GNSS::SessionFile::sessionStartEnd\n")
+    croak("Invalid session id $sessid passed to LINZ::BERN::SessionFile::sessionStartEnd\n")
        if $sessid !~ /^(\d\d\d)([A-Z0-9])$/ || $1 < 1 || $1 > 366; 
     my ($dayno,$flag) = ($1,$2);
-    croak("Invalid year $year passed to LINZ::GNSS::SessionFile::sessionStartEnd\n")
+    croak("Invalid year $year passed to LINZ::BERN::SessionFile::sessionStartEnd\n")
        if $year !~ /^\d\d\d\d$/ || $year < 1900 || $year > 2100; 
 
     # Look for session starting 
