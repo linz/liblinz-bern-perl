@@ -7,28 +7,9 @@ use LINZ::GNSS::Time qw/ymdhms_seconds seconds_ymdhms time_elements/;
 
 =head1 LINZ::BERN::StationFile
 
-Package to handle Bernese Station Information (STA) files
-
-Synopsis:
-
-  use LINZ::BERN::StationFile;
-  use LINZ::GNSS::Time qw/datetime_seconds/;
-
-  my $filename = 'STA/EXAMPLE.SES';
-  my $sf = new LINZ::BERN::StationFile( $filename );
-
-  # Trim the station information to the specified range
-  # (eg for station information extracted from RINEX file)
-  $sf->selectDates( $starttime, $endtime );
-
-  # Set station renaming for code to name
-  $sf->renameStation($code,$name);
-
-  # Merge station information with data from another file.  
-  # Returns a list text strings defining differences between the files
-  $sf->mergeStationInformation( $other );
-
-  $sf->write( $filename );
+Package to handle Bernese Station Information (STA) files.  Currently this module reads and processes
+a template file - it cannot create a new station information file.  Also it currently only processes
+the 001 (renaming), 002 (station information), and 003 (problem) sections of the file.
 
 =cut
 
@@ -68,6 +49,9 @@ our $blockFields={
     {field=>"remark",id=>"REMARK"},
    ],
    };
+
+our $defaultStartTime='1980 01 01 00 00 00';
+our $defaultEndTime='2099 12 31 23 59 59';
 
 sub _headerFormat
 {
@@ -109,6 +93,20 @@ sub _headerFormat
     return \%found;
 }
 
+sub _readTime
+{
+    my($time,$defaultTime)=@_;
+    my($y,$m,$d,$hh,$mm,$ss)=split(' ',$time || $defaultTime);
+    die if $m < 0;
+    return ymdhms_seconds($y,$m,$d,$hh,$mm,$ss);
+}
+
+sub _writeTime
+{
+    my($seconds) = @_;
+    return sprintf("%04d %02d %02d %02d %02d %02d",seconds_ymdhms($seconds));
+}
+
 sub _readData
 {
     my($staf,$format)=@_;
@@ -123,6 +121,14 @@ sub _readData
             $value='' if $value eq $pos->{default};
             $value =~ s/\s+$//;
             $value =~ s/^\s+//;
+            if($field eq 'starttime')
+            { 
+                $value=_readTime($value,$defaultStartTime) 
+            }
+            elsif($field eq 'endtime')
+            { 
+                $value=_readTime($value,$defaultEndTime);
+            };
             $record->{$field}=$value;
         }
         push(@data,$record);
@@ -139,13 +145,10 @@ sub _cleanName
     return $name;
 }
 
-sub _offsetTime
+sub _setAntennaRadome
 {
-    my($time,$offset)=@_;
-    my($y,$m,$d,$hh,$mm,$ss)=split(' ',$time);
-    my $seconds=ymdhms_seconds($y,$m,$d,$hh,$mm,$ss)+$offset;
-    return sprintf("%04d %02d %02d %02d %02d %02d",
-        seconds_ymdhms($seconds));
+    my($antenna,$radome) = @_;
+    return sprintf("%-16.16s%-4.4s",$antenna,$radome);
 }
 
 sub _mergeBlockData
@@ -165,8 +168,8 @@ sub _mergeBlockData
     }
     foreach my $name (sort keys %names)
     {
-        my @data=sort {$a->{starttime} cmp $b->{starttime} || 
-            ($a->{endtime} || '2999') cmp ($b->{endtime} || '2999')} 
+        my @data=sort 
+            {$a->{starttime} <=> $b->{starttime} || $a->{endtime} <=> $b->{endtime}} 
             @{$names{$name}};
         next if scalar(@data) < 2;
         my @merged=();
@@ -174,21 +177,39 @@ sub _mergeBlockData
         {
             my $d0=$data[$i];
             my $d1=$data[$i+1];
-            my $overlap=($d0->{endtime} || 2999) > $d1->{starttime};
-            my $joinable=$d0->{endtime} && ! $overlap && $d0->{endtime} >= _offsetTime($d1->{starttime},-30);
+            my $overlap=$d0->{endtime} > $d1->{starttime};
+            my $joinable=! $overlap && $d0->{endtime} >= $d1->{starttime}-30;
             if( $overlap || $joinable )
             {
                 my $different=0;
                 foreach my $k (sort keys %$d0)
                 {
                     next if $k eq 'starttime' || $k eq 'endtime' || $d0->{$k} eq $d1->{$k};
+                    # If one or other value is default then overwrite with specified value
+                    $d1->{$k} = $d0->{$k} if $d1->{$k} eq '';
+                    $d0->{$k} = $d1->{$k} if $d0->{$k} eq '';
+                    # If radome missing in one or other then assume specified value
+                    # applies.
+                    if( $k eq 'anttype' )
+                    {
+                        my $radome0=substr($d0->{$k},16,4);
+                        my $radome1=substr($d1->{$k},16,4);
+                        $d1->{anttype} = _setAntennaRadome($d1->{anttype},$radome0)
+                            if $radome1 eq '' && $radome0 ne '';
+                        $d0->{anttype} = _setAntennaRadome($d0->{anttype},$radome1)
+                            if $radome0 eq '' && $radome1 ne '';
+                    }
+                    next if $d0->{$k} eq $d1->{$k};
+
                     if( $k ne 'remark' )
                     {
                         $different=1;
                         last if ! $overlap;
+                        my $endtime=$d0->{endtime};
+                        $endtime=$d1->{endtime} if $d1->{endtime} < $endtime;
                         push( @errors, 
-                        "$name $k different from ".$d1->{starttime}.
-                        " to ".($d0->{endtime} || '2999').": \"".
+                        "$name $k different from "._writeTime($d1->{starttime}).
+                        " to "._writeTime($endtime).": \"".
                         $d0->{$k}."\" vs \"".$d1->{$k}."\"");
                     }
                 }
@@ -199,7 +220,6 @@ sub _mergeBlockData
                 }
                 else
                 {
-                    $d1->{remark} = $d0->{remark} if ! $d1->{remark};
                     $d1->{starttime}=$d0->{starttime}
                 }
             }
@@ -234,7 +254,7 @@ sub _applyNameMap
     {
         my $name=_cleanName($d->{name});
         my $starttime=$d->{starttime};
-        my $endtime=$d->{endtime} || '2999';
+        my $endtime=$d->{endtime};
         my $used=0;
         foreach my $rename (@$renames)
         {
@@ -244,7 +264,7 @@ sub _applyNameMap
             my $matched=$srcname eq $name;
             $matched=1 if ! $matched 
                 && $srcname =~ /\*$/ 
-                && substr($name,0,length($srcname-1)) eq substr($srcname,0,length($srcname)-1);
+                && substr($name,0,length($srcname)-1) eq substr($srcname,0,length($srcname)-1);
             next if ! $matched;
 
             $used=1;
@@ -307,6 +327,8 @@ sub _writeData
             my $pos=$format->{$field};
             next if $pos->{col} < 0;
             my $value=$d->{$field};
+            $value=_writeTime($value) if $field eq 'starttime' || $field eq 'endtime';
+            $value='' if $field eq 'endtime' && $value >= $defaultEndTime;
             $value=$pos->{default} if $value eq '';
             substr($line,$pos->{col},$pos->{len})=sprintf("%-*.*s",$pos->{len},$pos->{len},$value);
         }
@@ -354,6 +376,12 @@ sub _writeBlock
     print $staf "\n";
 }
 
+=head2 $sta=new LINZ::BERN::StationFile( $filename )
+
+Opens and reads a station information file.
+
+=cut
+
 sub new
 {
     my($class,$filename) = @_;
@@ -371,6 +399,12 @@ sub filename
     $self->{filename} = $filename if $filename;
     return $self->{filename};
 }
+
+=head2 $sta->read( $filename )
+
+Reads the station information file.  Called by new.
+
+=cut
 
 sub read
 {
@@ -409,6 +443,13 @@ sub read
     close($staf);
 }
 
+=head2 $sta->write( $filename )
+
+Writes the station information to a .STA file.  If $filename is omitted then
+the input station information file will be overwritten
+
+=cut
+
 sub write
 {
     my($self,$filename)=@_;
@@ -440,12 +481,62 @@ sub _blockdata
     return wantarray ? @$blockdata : $blockdata;
 }
 
+=head2 $sta->renames()
+
+Access the data from the station renaming section (001).  Returns an array
+or array ref of hashes of station renaming data with keys:
+
+    name
+    flag
+    starttime
+    endtime
+    srcname
+    remark
+
+Note that starttime and endtime are converted to epoch seconds
+
+Can also be called with an array of station information data to replace
+the existing values.
+
+   $sta->renames(\@updates)
+
+=cut
+
+
 sub renames
 {
     my($self,@data)=@_;
     my $blockdata=$self->_blockdata('001',@data);
     return wantarray ? @$blockdata : $blockdata;
 }
+
+=head2 $sta->stationinfo()
+
+Access the data from the station information section (002).  Returns an array
+or array ref of hashes of station information data with keys:
+
+    name
+    flag
+    starttime
+    endtime
+    rectype
+    recserno
+    recno
+    anttype
+    antserno
+    antno
+    ecc_n
+    ecc_e
+    ecc_u
+    description
+    remark
+
+Note that starttime and endtime are converted to epoch seconds
+
+Can also be called with an array of station information data to replace
+the existing values.
+
+=cut
 
 sub stationinfo
 {
@@ -454,6 +545,24 @@ sub stationinfo
     return wantarray ? @$blockdata : $blockdata;
 }
 
+=head2 $sta->problems()
+
+Access the data from the problem section (003).  Returns an array
+or array ref of hashes of problem data with keys:
+
+    name
+    flag
+    starttime
+    endtime
+    remark
+
+Note that starttime and endtime are converted to epoch seconds
+
+Can also be called with an array of problem data to replace
+the existing values.
+
+=cut
+
 sub problems
 {
     my($self,@data)=@_;
@@ -461,27 +570,37 @@ sub problems
     return wantarray ? @$blockdata : $blockdata;
 }
 
+=head2 $sta->selectDates( $starttime, $endtime )
+
+Trims station information to only include data from $startime to $endtime
+
+=cut
+
 sub selectDates
 {
     my($self,$starttime,$endtime)=@_;
-    my $startstr=sprintf("%04d %02d %02d %02d %02d %02d",
-        seconds_ymdhms($starttime));
-    my $endstr=sprintf("%04d %02d %02d %02d %02d %02d",
-        seconds_ymdhms($endtime));
     foreach my $blockid (keys %$blockFields )
     {
         my $updated=[];
         foreach my $bd ($self->_blockdata($blockid))
         {
-            next if $bd->{endtime} ne '' && $bd->{endtime} < $startstr;
-            next if $bd->{starttime} > $endstr;
-            $bd->{endtime}=$endstr if $bd->{endtime} eq '' || $bd->{endtime} > $endstr;
-            $bd->{starttime}=$startstr if $bd->{starttime} < $startstr;
+            next if $bd->{endtime} ne '' && $bd->{endtime} < $starttime;
+            next if $bd->{starttime} > $endtime;
+            $bd->{endtime}=$endtime if $bd->{endtime} eq '' || $bd->{endtime} > $endtime;
+            $bd->{starttime}=$starttime if $bd->{starttime} < $starttime;
             push(@$updated,$bd);
         }
         $self->_blockdata($blockid,$updated);
     }
 }
+
+=head2 $sta->updateNames( old=>new, old=>new ... )
+
+Updates station names replacing old names with new name.  This does not
+affect station renaming, just the names that are generated by it, and the
+names that are used for other station information sections.
+
+=cut
 
 sub updateNames
 {
@@ -512,6 +631,17 @@ sub updateNames
 
     return $self->mergeData();
 }
+
+=head2 $sta->setRename(code=>value,code=>value,...)
+
+Sets station renaming of code=>value.  Overrides any existing data in 
+block 001 (station naming) of the station information file.
+
+Returns a lists of conflicts generated by renaming (eg where incompatible
+station information has been generated by renaming other blocks, or where
+there was already incompatible information.
+
+=cut
 
 sub setRename
 {
@@ -545,6 +675,15 @@ sub setRename
     return $self->_mergeData();
 }
 
+=head2 $sta->merge( $sta2 )
+
+Merge station information from another file into the current file
+
+Returns an array of conflicts (as text strings) or undef if there are 
+none.
+
+=cut
+
 sub merge
 {
     my($self,$other)=@_;
@@ -556,4 +695,24 @@ sub merge
         push(@$bd,@$od) if $od;
     }
     return $self->_mergeData();
+}
+
+=head2 $sta->setMissingRadome('NONE')
+
+Sets the radome code for antennas for which it is not defined.
+
+=cut
+
+sub setMissingRadome
+{
+    my($self,$radome)=@_;
+    $radome ||= 'NONE';
+    foreach my $d ($self->stationinfo())
+    {
+        my $anttype=$d->{anttype};
+        if( substr($anttype,16,4) eq '')
+        {
+            $d->{anttype} = _setAntennaRadome($d->{anttype},$radome);
+        }
+    }
 }
