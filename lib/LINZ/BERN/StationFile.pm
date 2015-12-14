@@ -163,7 +163,7 @@ sub _mergeBlockData
         $names{$name}=[] if not exists $names{$name};
         push(@{$names{$name}},$item);
     }
-    foreach my $name (keys %names)
+    foreach my $name (sort keys %names)
     {
         my @data=sort {$a->{starttime} cmp $b->{starttime} || 
             ($a->{endtime} || '2999') cmp ($b->{endtime} || '2999')} 
@@ -174,40 +174,40 @@ sub _mergeBlockData
         {
             my $d0=$data[$i];
             my $d1=$data[$i+1];
-            if( ($d0->{endtime} || 2999) >= $d1->{starttime} ) 
+            my $overlap=($d0->{endtime} || 2999) > $d1->{starttime};
+            my $joinable=$d0->{endtime} && ! $overlap && $d0->{endtime} >= _offsetTime($d1->{starttime},-30);
+            if( $overlap || $joinable )
             {
                 my $different=0;
-                foreach my $k (keys %$d0)
+                foreach my $k (sort keys %$d0)
                 {
                     next if $k eq 'starttime' || $k eq 'endtime' || $d0->{$k} eq $d1->{$k};
-                    my $error="$k different from ".$d1->{starttime}.
-                        " to ".($d0->{endtime} || '2999').": \"".
-                        $d0->{$k}."\" vs \"".$d1->{$k}."\"";
-                    if( $k eq 'remark' )
-                    {
-                        $error='Warning: '.$error;
-                    }
-                    else
+                    if( $k ne 'remark' )
                     {
                         $different=1;
+                        last if ! $overlap;
+                        push( @errors, 
+                        "$name $k different from ".$d1->{starttime}.
+                        " to ".($d0->{endtime} || '2999').": \"".
+                        $d0->{$k}."\" vs \"".$d1->{$k}."\"");
                     }
-                    if( $different )
-                    {
-                        $d0->{endtime}=_offsetTime($d1->{starttime},-1);
-                        push(@merged,$d0);
-                    }
-                    else
-                    {
-                        $d1->{starttime}=$d0->{starttime}
-                    }
-                    
+                }
+                if( $different )
+                {
+                    $d0->{endtime}=$d1->{starttime} if $overlap;
+                    push(@merged,$d0);
+                }
+                else
+                {
+                    $d1->{remark} = $d0->{remark} if ! $d1->{remark};
+                    $d1->{starttime}=$d0->{starttime}
                 }
             }
         }
         push(@merged,$data[$#data]);
         $names{$name}=\@merged;
     }
-    my @data=();
+    @data=();
     foreach my $name ( sort keys %names )
     {
         push(@data,@{$names{$name}});
@@ -230,7 +230,7 @@ sub _applyNameMap
     my $renames=$self->renames;
     my @mapped=();
     my @torename=@$data;
-    while my $d (shift @torename)
+    while (my $d = shift @torename)
     {
         my $name=_cleanName($d->{name});
         my $starttime=$d->{starttime};
@@ -239,9 +239,9 @@ sub _applyNameMap
         foreach my $rename (@$renames)
         {
             my $srcname=$rename->{srcname};
-            next if $rename->{starttime} > $endtime;
-            next if $rename->{endtime} && ($rename->{endtime} < $starttime);
-            $matched=$srcname eq $name;
+            next if $rename->{starttime} >= $endtime;
+            next if $rename->{endtime} && ($rename->{endtime} <= $starttime);
+            my $matched=$srcname eq $name;
             $matched=1 if ! $matched 
                 && $srcname =~ /\*$/ 
                 && substr($name,0,length($srcname-1)) eq substr($srcname,0,length($srcname)-1);
@@ -251,14 +251,14 @@ sub _applyNameMap
             if( $rename->{endtime} && ($rename->{endtime} < $endtime) )
             {
                 my $after=_copy($d);
-                $after->{starttime}=_offsetTime($rename->{endtime},1);
+                $after->{starttime}=$rename->{endtime};
                 unshift(@torename,$after);
                 $endtime=$rename->{endtime};
             }
             if( $rename->{starttime} > $starttime )
             {
                 my $before=_copy($d);
-                $before->{endtime}=_offsetTime($rename->{starttime},-1);
+                $before->{endtime}=$rename->{starttime};
                 unshift(@torename,$before);
                 $starttime=$rename->{starttime};
             }
@@ -286,6 +286,7 @@ sub _mergeData
         my $blockerrors=$self->_mergeBlockData( $blockid, $key );
         push(@errors,@$blockerrors) if $blockerrors;
     }
+    @errors=sort @errors;
     return @errors ? \@errors : undef;
 }
 
@@ -514,7 +515,7 @@ sub updateNames
 
 sub setRename
 {
-    my($self,@renames)=@_
+    my($self,@renames)=@_;
     my %name;
     if( ref($renames[0]) eq 'HASH' )
     {
