@@ -1,3 +1,10 @@
+liblinz-bern-perl (1.19.0-1) trusty; urgency=medium
+
+  * Adding support for expanding array variables
+  * Improved error handling and tracking updates to LINZ::GDB module
+
+ -- Chris Crook <ccrook@linz.govt.nz>  Fri, 18 Dec 2015 11:16:41 +1300
+
 liblinz-bern-perl (1.18.0-1) trusty; urgency=medium
 
   * Changing times to epoch seconds, bug fixes
