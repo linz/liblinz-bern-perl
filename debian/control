@@ -15,7 +15,8 @@ Depends: ${misc:Depends},
     libdbi-perl,
     libjson-perl,
     libperlio-gzip-perl,
-    liblinz-gnss-perl
+    liblinz-gnss-perl,
+    liblinz-gdb-perl
 Description: Perl modules for LINZ Bernese utilities
  LINZ::BERN support modules for Bernese utilities
  .
