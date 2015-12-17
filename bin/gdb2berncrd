@@ -4,7 +4,7 @@ use strict;
 
 use Getopt::Std;
 use LINZ::GNSS::Time qw/parse_gnss_date seconds_decimal_year/;
-use LINZ::GDB qw/SetupGdbCache GetGdbMark/;
+use LINZ::GDB qw/SetGdbOptions GetGdbMark/;
 use LINZ::Geodetic::CoordSysList qw/GetCoordSys/;
 use LINZ::BERN::CrdFile;
 
@@ -17,7 +17,7 @@ help(1) if @ARGV < 2;
 my $update=$opts{u} || $opts{i};
 my $overwrite=$opts{o};
 my $crdin=$opts{i};
-my $flag=$opts{f};
+my $flag=$opts{f} || '';
 my $newflag=$opts{f} || $flag || '';
 my $maxdiff=$opts{m} || 0;
 my $datum=$opts{d} || 'IGb08';
@@ -63,7 +63,7 @@ my $nnew=0;
 my $nupd=0;
 my $nskip=0;
 
-SetupGdbCache();
+SetGdbOptions(useCache=>1);
 
 sub MarkData
 {
@@ -73,6 +73,13 @@ sub MarkData
     {
         $markdata=GetGdbMark($code);
     };
+    if( $@ )
+    {
+        my $error=$@;
+        $error=~s/\n.*$//;
+        print " Not $action mark $code - $error" if $verbose > 1;
+        return undef;
+    }
     if( ! $markdata )
     {
         print " Not $action mark $code - not in geodetic database"
@@ -115,7 +122,7 @@ eval
         }
         $maxoffset = $offset if $offset > $maxoffset;
         $stn->xyz([$xyz->[0],$xyz->[1],$xyz->[2]]);
-        $stn->flag($flag) if $flag;
+        $stn->flag($flag) if $flag ne '';
         print " Updating $code\n" if $verbose > 1;
         $nupd++;
     }
@@ -152,12 +159,13 @@ eval
 
     if( $verbose )
     {
+        print "\n" if $verbose > 1;
         print " $nnew stations added\n" if $nnew;
         printf " %d stations updated - max coordinate difference %.4fm\n",
             $nupd,$maxoffset if $nupd;
         printf " %d stations not updated as offset larger than %.4fm\n",
             $nskip,$maxdiff if $nskip;
-        printf " %d stations not updated as not NZGD2000 geodetic marks\n",
+        printf " %d stations not processed as not NZGD2000 GDB marks or GDB not available\n",
             $nngeo if $nngeo;
         print " No stations added or updated\n" if ! ($nnew || $nupd);
     }
