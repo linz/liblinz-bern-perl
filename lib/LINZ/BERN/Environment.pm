@@ -87,7 +87,20 @@ Expand ${xxx} with the value of $ENV{xxx} in a string
 sub expandValue
 {
     my($value) = @_;
-    $value =~ s/\$\{(\w+)\}/$ENV{$1}/eg;
+    if( ref $value eq 'ARRAY' )
+    {
+        my @expanded=();
+        foreach my $v (@$value)
+        {
+            $v = expandValue($v);
+            push(@expanded,$v);
+        }
+        $value = \@expanded;
+    }
+    else
+    {
+        $value =~ s/\$\{(\w+)\}/$ENV{$1}/eg;
+    }
     return $value;
 }
 
