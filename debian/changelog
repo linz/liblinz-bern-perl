@@ -1,3 +1,11 @@
+liblinz-bern-perl (1.18.0-1) trusty; urgency=medium
+
+  * Changing times to epoch seconds, bug fixes
+  * Adding missing dependency
+  * Adding gdb2berncrd
+
+ -- Chris Crook <ccrook@linz.govt.nz>  Fri, 18 Dec 2015 06:44:37 +1300
+
 liblinz-bern-perl (1.17.2-1) trusty; urgency=medium
 
   * Fixing scripts to read abbreviations file
