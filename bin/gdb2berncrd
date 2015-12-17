@@ -1,0 +1,280 @@
+#!/usr/bin/perl
+
+use strict;
+
+use Getopt::Std;
+use LINZ::GNSS::Time qw/parse_gnss_date seconds_decimal_year/;
+use LINZ::GDB qw/SetupGdbCache GetGdbMark/;
+use LINZ::Geodetic::CoordSysList qw/GetCoordSys/;
+use LINZ::BERN::CrdFile;
+
+my %opts;
+getopts('vVoucvhi:f:n:m:d:r:',\%opts);
+
+help(0) if $opts{h};
+help(1) if @ARGV < 2;
+
+my $update=$opts{u} || $opts{i};
+my $overwrite=$opts{o};
+my $crdin=$opts{i};
+my $flag=$opts{f};
+my $newflag=$opts{f} || $flag || '';
+my $maxdiff=$opts{m} || 0;
+my $datum=$opts{d} || 'IGb08';
+my $crdsys=$opts{r} || 'ITRF2008';
+my $verbose=$opts{V} ? 2 : $opts{v} ? 1 : 0;
+my $codeonly=$opts{c};
+
+my $crdout=$ARGV[0];
+my $epochstr=$ARGV[1];
+my @codes=@ARGV[2..$#ARGV];
+my %usecode=map {uc($_)=>1} @codes;
+
+$crdin=$crdout if ! $crdin && ! $overwrite;
+
+die " Cannot open input file $crdin\n" if $opts{i} && ! -f $opts{i};
+
+# Load the epoch
+
+my ($epoch, $year);
+eval
+{
+    $epoch=parse_gnss_date( $epochstr );
+    $year=seconds_decimal_year($epoch);
+};
+if( $@ )
+{
+    die " $epochstr is not a valid format for the coordinate epoch\n";
+}
+
+# Load the coordinate systems
+
+my $csnzgd2000=GetCoordSys('NZGD2000');
+die " Cannot load NZGD2000 coordinate system\n" if ! $csnzgd2000;
+my $csitrf=GetCoordSys($crdsys);
+die " Cannot load $crdsys coordinate system\n" if ! $csitrf;
+$csitrf=$csitrf->asxyz();
+
+my $crd=new LINZ::BERN::CrdFile($crdin );
+
+my $maxoffset=0.0;
+my $nngeo=0;
+my $nnew=0;
+my $nupd=0;
+my $nskip=0;
+
+SetupGdbCache();
+
+sub MarkData
+{
+    my($code,$action)=@_;
+    my $markdata;
+    eval
+    {
+        $markdata=GetGdbMark($code);
+    };
+    if( ! $markdata )
+    {
+        print " Not $action mark $code - not in geodetic database"
+            if $verbose > 1;
+        return undef;
+    }
+    if($markdata->{official_coordsys} ne 'NZGD2000')
+    {
+        print " Not $action mark $code - coordinate not NZGD2000"
+            if $verbose > 1;
+        return undef;
+    }
+    my $llh=$markdata->{official_coordinate};
+    my $crd=$csnzgd2000->coord($llh->[1],$llh->[0],$llh->[2]);
+    $crd->setepoch($year);
+    my $xyz=$crd->as($csitrf);
+    $markdata->{xyz}=[$xyz->[0],$xyz->[1],$xyz->[2]];
+    return $markdata;
+}
+
+eval
+{
+    foreach my $stn ($crd->stations())
+    {
+        my $code=uc($stn->code);
+        next if ! $usecode{$code} && ! $update;
+        $nngeo++;
+        my $markdata=MarkData($code,'updating');
+        next if ! $markdata;
+        $nngeo--;
+        my $xyz=$markdata->{xyz};
+        my $xyz0=$stn->xyz();
+        my $offset=($xyz->[0]-$xyz0->[0])**2+($xyz->[1]-$xyz0->[1])**2+($xyz->[2]-$xyz0->[2])**2;
+        $offset=sqrt($offset);
+        if( $maxdiff > 0 && $offset > $maxdiff )
+        {
+            print " Offset for $code too large - not updating\n" if $verbose;
+            $nskip++;
+            next;
+        }
+        $maxoffset = $offset if $offset > $maxoffset;
+        $stn->xyz([$xyz->[0],$xyz->[1],$xyz->[2]]);
+        $stn->flag($flag) if $flag;
+        print " Updating $code\n" if $verbose > 1;
+        $nupd++;
+    }
+
+
+    foreach my $code (@codes)
+    {
+        next if $crd->station($code);
+        my $markdata;
+        eval
+        {
+            $markdata=MarkData($code,'creating');
+        };
+        $nngeo++;
+        next if ! $markdata;
+        $nngeo--;
+        my $xyz=$markdata->{xyz};
+        my $code=$markdata->{geodetic_code};
+        my $name=$code;
+        if( ! $codeonly )
+        {
+            $name = $name.' '.$markdata->{names}->{CURR};
+        }
+        my $newstn=new LINZ::BERN::CrdFile::Station($name,$code,$xyz,$newflag);
+        print " Adding station $code\n" if $verbose > 1;
+        $crd->add($newstn);
+        $nnew++;
+    }
+
+    $crd->datum($datum);
+    $crd->epoch($epoch);
+    $crd->filename($crdout);
+    $crd->write();
+
+    if( $verbose )
+    {
+        print " $nnew stations added\n" if $nnew;
+        printf " %d stations updated - max coordinate difference %.4fm\n",
+            $nupd,$maxoffset if $nupd;
+        printf " %d stations not updated as offset larger than %.4fm\n",
+            $nskip,$maxdiff if $nskip;
+        printf " %d stations not updated as not NZGD2000 geodetic marks\n",
+            $nngeo if $nngeo;
+        print " No stations added or updated\n" if ! ($nnew || $nupd);
+    }
+};
+if( $@ )
+{
+    my $msg=$@;
+    $msg=~s/\^\s+at\s+.*\s+line\s+\d+\.$//;
+    print " $msg\n";
+}
+
+sub help
+{
+    my ($brief)=@_;
+    require Pod::Usage;
+    Pod::Usage::pod2usage(
+    {
+        -verbose=>$brief ? 99 : 2,
+        -sections=>'Synopsis',
+        -exitval=>2,
+    });
+}
+
+__DATA__
+
+=head1 Name
+
+gdb2berncrd -  Install geodetic database coords to a Bernese .CRD file
+
+=head1 Synopsis
+
+    gdb2berncrd [options] crd_file epoch [code code code ...]
+    gdb2berncrd -h
+
+=head1 Description
+
+Install coordinates and mark information from the LINZ geodetic 
+database into a Bernese .CRD file.  Can update an existing coordinate 
+file or create a new coordinate file.
+
+=head1 Parameters
+
+Parameters are:
+
+=over
+
+=item crd_file
+
+The name of the output coordinate file.  This file will be overwritten
+if the -i or -o options are specified.  Otherwise the file will be updated
+if the -u option is specified.
+
+=item epoch
+
+The epoch at which to convert the NZGD2000 coordinates from the geodetic
+database to ITRF2008 coordinates.  Any of the formats accepted by 
+LINZ::GNSS::Time::parse_gnss_date can be used.
+
+=back
+
+=head1 Options
+
+Valid options are:
+
+=over
+
+=item -u
+
+Update coordinates in the coordinate file
+
+=item -o
+
+Overwrite an existing .CRD file - ignore any information currently in it.
+
+=item -i crdfile
+
+Specify an input coordinate file.  Stations will be read from this file, 
+and stations in the GDB will be updated.  The output file will be 
+overwritten.  
+
+=item -f flag
+
+Flag to apply to updated stations.  Default is to leave unchanged
+
+=item -n newflag
+
+Flag to apply to new stations.  Default to use flag if defined.
+
+=item -m #.###
+
+Maximum acceptable difference in coordinates in metres.  Coordinates
+updates are not applied if the SINEX coordinate differs from the 
+input file coordinate by more than this amount.
+
+=item -d datum
+
+Datum code to use for new Bernese coordinate files (default IGb08)
+
+=item -r crdsys
+
+The coordinate system to use for the output coordinate file (default ITRF2008)
+
+=item -c 
+
+Code only - do not include the GDB name for the station
+in the .CRD file for new stations
+
+=item -v
+
+Verbose mode
+
+=item -h
+
+Prints help and exits
+
+
+
+=back
+
+=cut
