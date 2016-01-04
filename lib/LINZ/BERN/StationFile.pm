@@ -716,3 +716,156 @@ sub setMissingRadome
         }
     }
 }
+
+=head2 $sta->loadIGSSiteLog( $sitelog, $name, $flag )
+
+Reads the block 2 (station information) section from an IGS site log
+(loaded by LINZ::GNSS::IGSSiteLog).  The data from the log will be 
+associated with $name if specified, otherwise the name will be taken
+from the site log four character code and domes number.  Existing 
+station information for the name will be replaced.
+
+=cut
+
+sub loadIGSSiteLog
+{
+    my($self,$sitelog,$name,$flag)=@_;
+    if( ! $name )
+    {
+        $name=$sitelog->code;
+        my $domes=$sitelog->domesNumber;
+        $name .= ' '.$domes if $domes;
+    }
+
+    # Compile a list of events from the site log, IA,DA (antenna installed, removed)
+    # IR,DR (receiver installed, removed), and sort by date
+
+    my @events;
+    my $endtime=_readTime($defaultEndTime);
+    foreach my $ant ($sitelog->antennaList)
+    {
+        push(@events,[$ant->{dateInstalled},'IA',$ant]);
+        push(@events,[$ant->{dateRemoved} || $endtime,'DA',$ant]);
+    }
+    foreach my $rec ($sitelog->receiverList)
+    {
+        push(@events,[$rec->{dateInstalled},'IR',$rec]);
+        push(@events,[$rec->{dateRemoved} || $endtime,'DR',$rec]);
+    }
+    @events=sort {$a->[0] <=> $b->[0] || $a->[1] cmp $b->[1]}  @events;
+
+    # Now compile the Bernese history.  Install events update the
+    # name of the antenna or receiver and increment the count,
+    # remove events decrement the count.  Only keep data for
+    # periods where the count of antenna and receiver is greater
+    # than 0.
+    
+    my $info={
+        name => $name,
+        flag => $flag,
+        starttime => '',
+        endtime => '',
+        rectype => '',
+        recserno => '',
+        recno => '',
+        anttype => '',
+        antserno => '',
+        antno => '',
+        ecc_n => '',
+        ecc_e => '',
+        ecc_u => '',
+        description => '',
+        remark => $sitelog->source,
+    };
+    my $nant=0;
+    my $nrec=0;
+
+    my @stationinfo=();
+
+    foreach my $event (@events)
+    {
+        my($date,$type,$antrec)=@$event;
+        $info->{endtime}=$date;
+        if( $nant > 0 && $nrec > 0 )
+        {
+            my $infocopy={};
+            while( my($k,$v)=each(%$info) ){$infocopy->{$k}=$v;}
+            push(@stationinfo,$infocopy);
+        }
+        $info->{starttime}=$date;
+        if( $type eq 'IA' )
+        {
+            $nant++;
+            $info->{anttype}=$antrec->{antennaType};
+            $info->{antserno}=$antrec->{serialNumber};
+            $info->{antno}='999999';
+            $info->{ecc_e}=sprintf("%.4f",$antrec->{offsetENU}->[0]);
+            $info->{ecc_n}=sprintf("%.4f",$antrec->{offsetENU}->[1]);
+            $info->{ecc_u}=sprintf("%.4f",$antrec->{offsetENU}->[2]);
+        }
+        elsif( $type eq 'DA')
+        {
+            $nant--;
+        }
+        elsif( $type eq 'IR')
+        {
+            $nrec++;
+            $info->{rectype}=$antrec->{receiverType};
+            $info->{recserno}=$antrec->{serialNumber};
+            $info->{recno}='999999';
+        }
+        elsif( $type eq 'DR')
+        {
+            $nrec--;
+        }
+    }
+
+    # Merge data that hasn't changed..
+    my @mergeinfo=();
+    my $last=undef;
+    my $tolerance=300;
+    foreach my $si (@stationinfo)
+    {
+        if( ! $last || $si->{starttime} > $last->{endtime}+$tolerance )
+        {
+            push(@mergeinfo,$si);
+            $last=$si;
+            next;
+        }
+        my $same=1;
+        foreach my $k (keys %$last)
+        {
+            next if $k eq 'starttime';
+            next if $k eq 'endtime';
+            next if $si->{$k} eq $last->{$k};
+            $same=0;
+            last;
+        }
+        if( $same )
+        {
+            $last->{endtime}=$si->{endtime};
+        }
+        else
+        {
+            push(@mergeinfo,$si);
+            $last=$si;
+        }
+    }
+    @stationinfo=@mergeinfo;
+
+    # Now replace the information in the data...
+
+    my @newinfo=();
+    foreach my $si ($self->stationinfo)
+    {
+        next if $si->{name} eq $name;
+        if( $si->{name} gt $name && @stationinfo )
+        {
+            push(@newinfo,@stationinfo);
+            @stationinfo=();
+        }
+        push(@newinfo,$si);
+    }
+    push(@newinfo,@stationinfo);
+    $self->stationinfo(@newinfo);
+}
