@@ -244,57 +244,6 @@ sub _copy
     return \%copy;
 }
 
-sub _applyNameMap
-{
-    my($self,$data)=@_;
-    my $renames=$self->renames;
-    my @mapped=();
-    my @torename=@$data;
-    while (my $d = shift @torename)
-    {
-        my $name=_cleanName($d->{name});
-        my $starttime=$d->{starttime};
-        my $endtime=$d->{endtime};
-        my $used=0;
-        foreach my $rename (@$renames)
-        {
-            my $srcname=$rename->{srcname};
-            next if $rename->{starttime} >= $endtime;
-            next if $rename->{endtime} && ($rename->{endtime} <= $starttime);
-            my $matched=$srcname eq $name;
-            $matched=1 if ! $matched 
-                && $srcname =~ /\*$/ 
-                && substr($name,0,length($srcname)-1) eq substr($srcname,0,length($srcname)-1);
-            next if ! $matched;
-
-            $used=1;
-            if( $rename->{endtime} && ($rename->{endtime} < $endtime) )
-            {
-                my $after=_copy($d);
-                $after->{starttime}=$rename->{endtime};
-                unshift(@torename,$after);
-                $endtime=$rename->{endtime};
-            }
-            if( $rename->{starttime} > $starttime )
-            {
-                my $before=_copy($d);
-                $before->{endtime}=$rename->{starttime};
-                unshift(@torename,$before);
-                $starttime=$rename->{starttime};
-            }
-            my $renamed=_copy($d);
-            $renamed->{starttime}=$starttime;
-            $renamed->{endtime}=$endtime;
-            $renamed->{name}=$rename->{name};
-            push(@mapped,$renamed);
-            $used=1;
-            last;
-        }
-        push(@mapped,_copy($d)) if ! $used;
-    }
-    return \@mapped;
-}
-
 sub _mergeData
 {
     my($self)=@_;
@@ -467,16 +416,37 @@ sub write
 sub _blockdata
 {
     my($self,$blockid,@data)=@_;
+    my $nameonly=0;
     if( defined($data[0]))
     {
-        @data=@{$data[0]} if ref($data[0]) eq 'ARRAY';
-        my $update=[];
+
+        if(ref($data[0]) eq 'ARRAY')
+        {
+            $nameonly=$data[1];
+            @data=@{$data[0]} 
+        }
+        my @update=();
+        my %names=();
         foreach my $d (@data)
         {
-            push(@$update,$d) if ref($d) eq 'HASH';
+            next if ref($d) ne 'HASH';
+            $names{$d->{name}}=1;
+            push(@update,$d);
         }
-        $self->{blocks}->{$blockid}->{data}=$update;
+        if( $nameonly )
+        {
+            foreach my $d ($self->_blockdata($blockid))
+            {
+                push(@update,$d) if ! $names{$d->{name}};
+            }
+        }
+
+        @update = sort 
+            {$a->{name} cmp $b->{name} || $a->{starttime} <=> $b->{starttime} || $a->{endtime} <=> $b->{endtime}} 
+            @update;
+        $self->{blocks}->{$blockid}->{data}=\@update;
     }
+
     my $blockdata=$self->{blocks}->{$blockid}->{data};
     return wantarray ? @$blockdata : $blockdata;
 }
@@ -533,8 +503,10 @@ or array ref of hashes of station information data with keys:
 
 Note that starttime and endtime are converted to epoch seconds
 
-Can also be called with an array of station information data to replace
-the existing values.
+Can also be called with an array or array ref of station information data 
+to replace the existing values. An array ref parameter can be followed
+by a logical parameter, which if true will only replace data for the 
+names used in the update data.
 
 =cut
 
@@ -675,6 +647,67 @@ sub setRename
     return $self->_mergeData();
 }
 
+=head2 $data=$sta->applyNameMap($data,$mappedonly)
+
+Applies name mapping to data.  The data is assumed to be an array of dictionaries with
+fields name, starttime, endtime.  The name map is applied, potentially splitting 
+date ranges, or removing data where no mapping is defined in the source data.
+
+If $mappedonly is true then only mapped names are copied.
+
+=cut
+
+sub applyNameMap
+{
+    my($self,$data,$mappedonly)=@_;
+    my $renames=$self->renames;
+    my @mapped=();
+    my @torename=@$data;
+    while (my $d = shift @torename)
+    {
+        my $name=_cleanName($d->{name});
+        my $starttime=$d->{starttime};
+        my $endtime=$d->{endtime};
+        my $used=0;
+        foreach my $rename (@$renames)
+        {
+            my $srcname=$rename->{srcname};
+            next if $rename->{starttime} >= $endtime;
+            next if $rename->{endtime} && ($rename->{endtime} <= $starttime);
+            my $matched=$srcname eq $name;
+            $matched=1 if ! $matched 
+                && $srcname =~ /\*$/ 
+                && substr($name,0,length($srcname)-1) eq substr($srcname,0,length($srcname)-1);
+            next if ! $matched;
+
+            $used=1;
+            if( $rename->{endtime} && ($rename->{endtime} < $endtime) )
+            {
+                my $after=_copy($d);
+                $after->{starttime}=$rename->{endtime};
+                unshift(@torename,$after);
+                $endtime=$rename->{endtime};
+            }
+            if( $rename->{starttime} > $starttime )
+            {
+                my $before=_copy($d);
+                $before->{endtime}=$rename->{starttime};
+                unshift(@torename,$before);
+                $starttime=$rename->{starttime};
+            }
+            my $renamed=_copy($d);
+            $renamed->{starttime}=$starttime;
+            $renamed->{endtime}=$endtime;
+            $renamed->{name}=$rename->{name};
+            push(@mapped,$renamed);
+            $used=1;
+            last;
+        }
+        push(@mapped,_copy($d)) if ! $used && ! $mappedonly;
+    }
+    return \@mapped;
+}
+
 =head2 $sta->merge( $sta2 )
 
 Merge station information from another file into the current file
@@ -691,7 +724,7 @@ sub merge
     {
         my $bd=$self->_blockdata($blockid);
         my $od=$other->_blockdata($blockid);
-        $od=$self->_applyNameMap($od);
+        $od=$self->applyNameMap($od);
         push(@$bd,@$od) if $od;
     }
     return $self->_mergeData();
@@ -717,19 +750,41 @@ sub setMissingRadome
     }
 }
 
-=head2 $sta->loadIGSSiteLog( $sitelog, $name, $flag )
+=head2 $sta->loadIGSSiteLog( $sitelog, %options )
 
-Reads the block 2 (station information) section from an IGS site log
+Loads the block 2 (station information) section from an IGS site log
 (loaded by LINZ::GNSS::IGSSiteLog).  The data from the log will be 
-associated with $name if specified, otherwise the name will be taken
-from the site log four character code and domes number.  Existing 
-station information for the name will be replaced.
+associated by default with the name taken from the four character
+code and domes number.  This can be overridden using the name option
+
+Names are mapped using the data from block 1 of the station information
+file.
+
+Existing station information for the name will be replaced.
+
+Options can include
+
+=over
+
+=item name=>$name
+
+Specify the name to use for the mark referenced in the site log.  This will be
+mapped using the block 1 name remapping.
+
+=item update=>$update
+
+Specifies whether the station information data is updated, or the function returns
+the updates, but doesn't actually apply them.
+
+=back
 
 =cut
 
 sub loadIGSSiteLog
 {
-    my($self,$sitelog,$name,$flag)=@_;
+    my($self,$sitelog,%options)=@_;
+    my $name=$options{name};
+    my $doupdate=exists $options{update} ? $options{update} : 1;
     if( ! $name )
     {
         $name=$sitelog->code;
@@ -762,7 +817,7 @@ sub loadIGSSiteLog
     
     my $info={
         name => $name,
-        flag => $flag,
+        flag => '',
         starttime => '',
         endtime => '',
         rectype => '',
@@ -853,19 +908,13 @@ sub loadIGSSiteLog
     }
     @stationinfo=@mergeinfo;
 
-    # Now replace the information in the data...
+    # Apply name mapping to the information
+    
+    my $mapped=$self->applyNameMap(\@stationinfo,1);
 
-    my @newinfo=();
-    foreach my $si ($self->stationinfo)
-    {
-        next if $si->{name} eq $name;
-        if( $si->{name} gt $name && @stationinfo )
-        {
-            push(@newinfo,@stationinfo);
-            @stationinfo=();
-        }
-        push(@newinfo,$si);
-    }
-    push(@newinfo,@stationinfo);
-    $self->stationinfo(@newinfo);
+    # Now replace the information in the data...
+    
+    $self->stationinfo( $mapped, 1 ) if $doupdate;
+
+    return wantarray ? @$mapped : $mapped;
 }

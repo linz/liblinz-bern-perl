@@ -1,0 +1,274 @@
+#!/usr/bin/perl
+
+use strict;
+
+use File::Find;
+use Getopt::Std;
+use LINZ::BERN::StationFile;
+use LINZ::BERN::CrdFile;
+use LINZ::GNSS::IGSSiteLog;
+use Carp;
+
+my %opts;
+getopts('vhndp:c:t:',\%opts);
+
+help(0) if $opts{h};
+help(1) if @ARGV < 3;
+
+my $crdfile=$opts{c};
+my $crdtol=$opts{t} // 10.0;
+my $usename=$opts{n};
+my $usedomes=$opts{d};
+my $logfilere=$opts{p};
+my $verbose=$opts{v};
+
+my $outputsta=pop @ARGV;
+my $inputsta=pop @ARGV;
+my @logfiles=@ARGV;
+
+
+croak("Input Bernese station information file $inputsta does not exist") if ! -r $inputsta;
+my $sta=new LINZ::BERN::StationFile($inputsta);
+
+my $crds=0;
+if( $crdfile )
+{
+    croak("Input Bernese coordinate file $crdfile does not exist") if ! -r $crdfile;
+    $crds=new LINZ::BERN::CrdFile($crdfile);
+}
+
+if( $logfilere ne '')
+{
+    croak "Cannot specify more than one IGS log directory with -p option" if @logfiles > 1;
+    my $logdir=$logfiles[0];
+    my @parts=split(/(\*|\?|\{(?:ssss|yyyy|mm|dd|ddd)\})/,$logfilere);
+    my $re='^';
+    foreach my $p (@parts)
+    {
+        $p = $p eq '*'      ? '.*' :
+             $p eq '?'      ? '.' :
+             $p eq '{ssss}' ? '(?<code>\\w\\w\\w\\w)' :
+             $p eq '{yyyy}' ? '(?<year>(?:19|20)\\d\\d)' :
+             $p eq '{mm}'   ? '(?<month>(?0[1-9]|10|11|12))' :
+             $p eq '{dd}'   ? '(?<day>(?0[1-9]|[12]\\d|30|31))' :
+             $p eq '{doy}'  ? '(?<doy>(?[0-3]\d\d))' :
+             quotemeta($p);
+        $re .= $p;
+    }
+    $re .= '$';
+    my %codes=();
+    @logfiles=();
+    find(sub {
+            my $filename=$_;
+            my $filepath=$File::Find::name;
+            next if $filename !~ /$re/;
+            my $code=uc($+{code});
+            if( $code )
+            {
+                my $sort=$+{yyyy}.$+{mm}.$+{dd}.$+{ddd}.$filename;
+                $codes{$code}=[$filepath,$sort] if ! exists $codes{$code} || $codes{$code}->[1] < $sort;
+            }
+            else
+            {
+                push(@logfiles,$filepath);
+            }
+        }, $logdir );
+    foreach my $c (values %codes){ push(@logfiles,$c->[0]); }
+}
+else
+{
+    foreach my $f (@logfiles)
+    {
+        croak("Log file $f does not exist\n") if ! -r $f;
+    }
+}
+@logfiles=sort(@logfiles);
+
+foreach my $logfile (@logfiles)
+{
+    print "Processing $logfile\n" if $verbose;
+    my $sitelog=new LINZ::GNSS::IGSSiteLog($logfile);
+    my $name;
+    if( $usedomes )
+    {
+        $name=$sitelog->code;
+        my $domes=$sitelog->domesNumber;
+        $name .= ' '.$domes if $domes ne '';
+    }
+    elsif( $usename )
+    {
+        $name=$sitelog->name;
+    }
+    else
+    {
+        $name=$sitelog->code;
+    }
+    my $updates=$sta->loadIGSSiteLog($sitelog,name=>$name,update=>0);
+    if( $crds )
+    {
+        my %names=();
+        foreach my $d (@$updates)
+        {
+            $names{$d->{name}}=1;
+        }
+        my %remove=();
+        my $xyz=$sitelog->approxXYZ;
+        foreach my $name (%names)
+        {
+            my $stn=$crds->station($name);
+            if( ! $stn )
+            {
+                $remove{$name}=1;
+                print "Station $name removed as not in coordinate file\n" if $verbose;
+                next;
+            }
+            my $testxyz=$stn->xyz;
+            my $offset=sqrt(
+                ($xyz->[0]-$testxyz->[0])**2+
+                ($xyz->[1]-$testxyz->[1])**2+
+                ($xyz->[2]-$testxyz->[2])**2);
+            if( $offset > $crdtol )
+            {
+                $remove{$name}=1;
+                printf "Station $name removed as outside coordinate tolerance (offset %.1f > %.1f)\n",$offset,$crdtol 
+                    if $verbose;
+            }
+        }
+        if( %remove )
+        {
+            my @using=();
+            foreach my $d (@$updates)
+            {
+                push(@using,$d) if ! $remove{$d->{name}};
+            }
+            $updates=\@using;
+        }
+    }
+    if( scalar(@$updates) < 1 )
+    {
+        print "No updates taken from $logfile - names not matched\n" if $verbose;
+        next;
+    }
+    $sta->stationinfo($updates,1);
+}
+
+my $tmpfile=$outputsta.'.tmp.'.$$;
+eval
+{
+    $sta->write($tmpfile);
+    unlink($outputsta);
+    rename($tmpfile,$outputsta) || croak("Cannot create $outputsta\n");
+    print "Created $outputsta\n" if $verbose;
+};
+if( $@ )
+{
+    my $error=$@;
+    unlink($tmpfile);
+    print $error;
+}
+
+sub help
+{
+    my ($brief)=@_;
+    require Pod::Usage;
+    Pod::Usage::pod2usage(
+    {
+        -verbose=>$brief ? 99 : 2,
+        -sections=>'Synopsis',
+        -exitval=>2,
+    });
+}
+
+__DATA__
+
+=head1 Name
+
+igslog_to_sta - Update Bernese station information from IGS site log
+
+=head1 Synopsis
+
+    igslog_to_sta [options] igslogfile ...  input_sta output_sta
+    igslog_to_sta [options] -p logfilepattern logdir input_sta output_sta   
+    igslog_to_sta -h
+
+=head1 Description
+
+Extract station information from one or more IGS site log files
+and update the station information section (block 2) of a Bernese
+station information file (.STA).  Currently only XML formatted log
+files are processed (see LINZ::GNSS::IGSSiteLog).
+
+If a logfilepattern is specified then it can include replacement
+strings {ssss} for station code and {yyyy} {mm} {dd} {ddd} for 
+year, month, day of month, and day of year.  Where more than one
+file is found for a station, the most recent one based on the filename
+date will be used, otherwise the file sorting last alphabetically will
+be used.  The search for log files will include the specified 
+directory and all child directories. (Note that the code is used 
+only for file selection - the station code for matching the station
+information file names comes from the contents of the log file).
+
+Station names are matched either using the four character code,
+possibly combined with the DOMES number, or the full name from the site
+log. The names are matched using the station renaming specified 
+in the station information file. 
+
+A Bernese coordinate file can be specified, in which case the program 
+will test the approximate coordinate in the site log against that in 
+the coordinate file to confirm the match.  Stations which are outside 
+a tolerance or not in the coordinate file will be ignored.
+
+If the -u option is specified then only stations in the coordinate 
+file are updated, otherwise all stations in the original file are
+updated.  If an output coordinate file is specified then the output
+will be written to that.
+
+=head1 Options
+
+Valid options are:
+
+=over
+
+=item -p filepattern
+
+Defines a pattern for the filename.  Can include {ssss} for a 
+station code, {yyyy}, {mm}, {dd}, or {ddd} for date components.
+Also ? and * for a single character or arbitrary number of c
+characters.  Results in a recursive search of the directory for
+log files as described above.
+
+=item -n 
+
+Specify that the site log stations will be linked with the .STA stations
+based on the name.
+
+=item -d
+
+Specify that the name will be compiled from the four character code and 
+DOMES number (or just the four character code if the DOMES number is blank).
+In this case the match must be exact.  Overrides the -f option.
+
+=item -c crdfile
+
+Specify the name of a Bernese .CRD file to use for confirming 
+the IGS station name match based on the coordinate.
+
+=item -t tolerance
+
+Specify the tolerance in metres used to confirm the name match.
+The default is 10 metres.
+
+=item -v
+
+Verbose mode
+
+=item -h
+
+Prints help and exits
+
+
+
+=back
+
+=cut
+

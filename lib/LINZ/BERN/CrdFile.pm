@@ -31,6 +31,7 @@ Synopsis:
   my $new2 = LINZ::BERN::CrdFile::Station($name,$code,[-5171804.7406,574169.1541,-3675912.2389],'Ok');
   $cf->add($new2);
 
+  # Look up a station by name
   my $teststn=$cf->station('TEST');
 
   $cf->filename('STA/UPDATE.CRD');
@@ -97,8 +98,8 @@ sub stations
 
 sub station
 {
-    my ($self,$code) = @_;
-    return $self->{index}->{$code};
+    my ($self,$name) = @_;
+    return $self->{index}->{$name};
 }
 
 sub add
