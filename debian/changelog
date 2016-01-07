@@ -1,3 +1,11 @@
+liblinz-bern-perl (1.21.0-1) trusty; urgency=medium
+
+  * Adding utility to update station information from IGS log files
+  * Updating igslog_to_sta to check code in station log filename before using
+  * Fixing documentation
+
+ -- Chris Crook <ccrook@linz.govt.nz>  Fri, 08 Jan 2016 06:47:24 +1300
+
 liblinz-bern-perl (1.20.0-1) trusty; urgency=medium
 
   * Adding update from IGS site log
