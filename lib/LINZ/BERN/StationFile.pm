@@ -708,6 +708,39 @@ sub applyNameMap
     return \@mapped;
 }
 
+=head2 $rename=$sta->matchName($srcname,$date)
+
+Find the rename record matching the source name as
+defined in the 001 block.  If the date is not specified then just returns the 
+first matching name, otherwise returns the name that applies at the date.
+The date $date must be supplied as a timestamp (ie epoch seconds).
+
+The rename record is a hash include keys name and flag which define the 
+mapped name.
+
+=cut
+
+sub matchName
+{
+    my($self,$srcname,$date)=@_;
+    $srcname=_cleanName($srcname);
+    foreach my $rename ($self->renames)
+    {
+        if( $date )
+        {
+            next if $rename->{starttime} >= $date;
+            next if $rename->{endtime} && $rename->{endtime} <= $date;
+        }
+        my $rensrc=$rename->{srcname};
+        my $matched = $rensrc eq $srcname;
+        $matched=1 if ! $matched 
+                && $rensrc =~ /\*$/ 
+                && substr($srcname,0,length($rensrc)-1) eq substr($rensrc,0,length($rensrc)-1);
+        return $rename if $matched;
+    }
+    return undef;
+}
+
 =head2 $sta->merge( $sta2 )
 
 Merge station information from another file into the current file

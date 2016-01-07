@@ -10,7 +10,7 @@ use LINZ::GNSS::IGSSiteLog;
 use Carp;
 
 my %opts;
-getopts('vhndp:c:t:',\%opts);
+getopts('vhnmdp:c:t:',\%opts);
 
 help(0) if $opts{h};
 help(1) if @ARGV < 3;
@@ -19,6 +19,7 @@ my $crdfile=$opts{c};
 my $crdtol=$opts{t} // 10.0;
 my $usename=$opts{n};
 my $usedomes=$opts{d};
+my $usenamecode=$opts{m};
 my $logfilere=$opts{p};
 my $verbose=$opts{v};
 
@@ -41,13 +42,13 @@ if( $logfilere ne '')
 {
     croak "Cannot specify more than one IGS log directory with -p option" if @logfiles > 1;
     my $logdir=$logfiles[0];
-    my @parts=split(/(\*|\?|\{(?:ssss|yyyy|mm|dd|ddd)\})/,$logfilere);
+    my @parts=split(/(\*|\?|\{(?:code|yyyy|mm|dd|ddd)\})/,$logfilere);
     my $re='^';
     foreach my $p (@parts)
     {
         $p = $p eq '*'      ? '.*' :
              $p eq '?'      ? '.' :
-             $p eq '{ssss}' ? '(?<code>\\w\\w\\w\\w)' :
+             $p eq '{code}' ? '(?<code>\\w\\w\\w\\w)' :
              $p eq '{yyyy}' ? '(?<year>(?:19|20)\\d\\d)' :
              $p eq '{mm}'   ? '(?<month>(?0[1-9]|10|11|12))' :
              $p eq '{dd}'   ? '(?<day>(?0[1-9]|[12]\\d|30|31))' :
@@ -65,10 +66,16 @@ if( $logfilere ne '')
             my $code=uc($+{code});
             if( $code )
             {
+                # If using name codes then check that the code is defined in the .STA file.
+                if( $usenamecode )
+                {
+                    my $rename=$sta->matchName($code);
+                    return if ! $rename;
+                }
                 my $sort=$+{yyyy}.$+{mm}.$+{dd}.$+{ddd}.$filename;
                 $codes{$code}=[$filepath,$sort] if ! exists $codes{$code} || $codes{$code}->[1] < $sort;
             }
-            else
+            elsif( ! $usenamecode ) 
             {
                 push(@logfiles,$filepath);
             }
@@ -199,14 +206,15 @@ station information file (.STA).  Currently only XML formatted log
 files are processed (see LINZ::GNSS::IGSSiteLog).
 
 If a logfilepattern is specified then it can include replacement
-strings {ssss} for station code and {yyyy} {mm} {dd} {ddd} for 
+strings {code} for station code and {yyyy} {mm} {dd} {ddd} for 
 year, month, day of month, and day of year.  Where more than one
 file is found for a station, the most recent one based on the filename
 date will be used, otherwise the file sorting last alphabetically will
 be used.  The search for log files will include the specified 
 directory and all child directories. (Note that the code is used 
 only for file selection - the station code for matching the station
-information file names comes from the contents of the log file).
+information file names comes from the contents of the log file. 
+However see the -m option).
 
 Station names are matched either using the four character code,
 possibly combined with the DOMES number, or the full name from the site
@@ -231,7 +239,7 @@ Valid options are:
 
 =item -p filepattern
 
-Defines a pattern for the filename.  Can include {ssss} for a 
+Defines a pattern for the filename.  Can include {code} for a 
 station code, {yyyy}, {mm}, {dd}, or {ddd} for date components.
 Also ? and * for a single character or arbitrary number of c
 characters.  Results in a recursive search of the directory for
@@ -247,6 +255,12 @@ based on the name.
 Specify that the name will be compiled from the four character code and 
 DOMES number (or just the four character code if the DOMES number is blank).
 In this case the match must be exact.  Overrides the -f option.
+
+=item -m
+
+Match codes with the filename.  Assumes the {code} pattern in the filename
+matches the four character id, and only uses the file if this is 
+identifiable in the station naming section (001) of the STA file.
 
 =item -c crdfile
 
