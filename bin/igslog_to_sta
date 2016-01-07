@@ -254,7 +254,6 @@ based on the name.
 
 Specify that the name will be compiled from the four character code and 
 DOMES number (or just the four character code if the DOMES number is blank).
-In this case the match must be exact.  Overrides the -f option.
 
 =item -m
 
