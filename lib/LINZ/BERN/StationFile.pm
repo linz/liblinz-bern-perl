@@ -699,6 +699,7 @@ sub applyNameMap
             $renamed->{starttime}=$starttime;
             $renamed->{endtime}=$endtime;
             $renamed->{name}=$rename->{name};
+            $renamed->{flag}=$rename->{flag};
             push(@mapped,$renamed);
             $used=1;
             last;
@@ -776,6 +777,7 @@ sub setMissingRadome
     foreach my $d ($self->stationinfo())
     {
         my $anttype=$d->{anttype};
+        $anttype=~s/\s+$//;
         if( substr($anttype,16,4) eq '')
         {
             $d->{anttype} = _setAntennaRadome($d->{anttype},$radome);
@@ -884,7 +886,13 @@ sub loadIGSSiteLog
         if( $type eq 'IA' )
         {
             $nant++;
-            $info->{anttype}=$antrec->{antennaType};
+            my $anttype=$antrec->{antennaType};
+            $anttype =~ s/\s+$//;
+            if( length($anttype) < 17 )
+            {
+                $anttype = _setAntennaRadome($anttype,'NONE');
+            }
+            $info->{anttype}=$anttype;
             $info->{antserno}=$antrec->{serialNumber};
             $info->{antno}='999999';
             $info->{ecc_e}=sprintf("%.4f",$antrec->{offsetENU}->[0]);
