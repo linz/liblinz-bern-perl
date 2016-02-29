@@ -1,3 +1,9 @@
+liblinz-bern-perl (1.23.0-1) trusty; urgency=medium
+
+  * Adding sinex and crd epoch options to sinex2crd
+
+ -- Chris Crook <ccrook@linz.govt.nz>  Tue, 01 Mar 2016 08:44:17 +1300
+
 liblinz-bern-perl (1.22.0-1) trusty; urgency=medium
 
   * Updating sinex2crd to handle different coordinate epochs
