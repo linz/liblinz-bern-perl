@@ -1,3 +1,9 @@
+liblinz-bern-perl (1.22.0-1) trusty; urgency=medium
+
+  * Updating sinex2crd to handle different coordinate epochs
+
+ -- Chris Crook <ccrook@linz.govt.nz>  Tue, 01 Mar 2016 06:30:32 +1300
+
 liblinz-bern-perl (1.21.1-1) trusty; urgency=medium
 
   * Fixing missing radome in IGS sitelog import and missing flag in renaming
