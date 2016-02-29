@@ -5,9 +5,10 @@ use strict;
 use Getopt::Std;
 use LINZ::BERN::CrdFile;
 use LINZ::GNSS::SinexFile;
+use LINZ::GNSS::Time qw/parse_gnss_date seconds_datetime/;
 
 my %opts;
-getopts('vVocuhf:n:m:d:',\%opts);
+getopts('vVocuhf:n:m:d:e:x:',\%opts);
 
 help(0) if $opts{h};
 help(1) if @ARGV < 2;
@@ -22,6 +23,8 @@ my $maxdiff=$opts{m} || 0;
 my $datum=$opts{d} || 'IGb08';
 my $verbose=$opts{V} ? 2 : $opts{v} ? 1 : 0;
 my $codeonly=$opts{c};
+my $epoch=$opts{e} ? parse_gnss_date($opts{e}) : 0;
+my $extrapolation=$opts{x} // 3;
 
 my $crdin=$ARGV[1];
 my $crdout=$ARGV[2] || $ARGV[1];
@@ -30,6 +33,12 @@ $crdin='' if ! $updateonly && ! -f $crdin;
 $crdin='' if $overwrite;
 
 my $crd=new LINZ::BERN::CrdFile($crdin );
+$epoch=$crd->epoch() if ! $epoch && $crdin;
+if( ! $epoch )
+{
+    my ($startdate,$enddate)=$snx->obsDates();
+    $epoch=($startdate+$enddate)/2;
+}
 
 my $maxoffset=0.0;
 my $nnew=0;
@@ -38,29 +47,37 @@ my $nskip=0;
 
 eval
 {
-    foreach my $snxstn ($snx->stations())
+    foreach my $sitecode ($snx->sitecodes())
     {
 
-        my $code=uc($snxstn->{code});
-        my $name=$codeonly ? $code : $code.' '.$snxstn->{name};
+        my $site=$snx->site($sitecode);
+        my $mark=$site->mark();
+        next if ! $mark;
+        my $code=uc($mark->code());
+        my $name=$codeonly ? $code : $code.' '.$mark->name();
         my $crdstn=$crd->station($name);
+        my $xyz;
+        eval
+        {
+            $xyz=$mark->xyz($epoch,$extrapolation);
+        };
+        next if $@;
 
         if( ! $crdstn )
         {
             next if $updateonly;
             print " Adding station $code\n" if $verbose > 1;
-            my $newstn=new LINZ::BERN::CrdFile::Station($name,'',$snxstn->{xyz},$newflag);
+            my $newstn=new LINZ::BERN::CrdFile::Station($name,'',$xyz,$newflag);
             $crd->add($newstn);
             $nnew++;
         }
         else
         {
             my $xyz0=$crdstn->xyz();
-            my $xyz1=$snxstn->{xyz};
             my $diff=sqrt(
-                    ($xyz0->[0]-$xyz1->[0])**2+
-                    ($xyz0->[1]-$xyz1->[1])**2+
-                    ($xyz0->[2]-$xyz1->[2])**2);
+                    ($xyz0->[0]-$xyz->[0])**2+
+                    ($xyz0->[1]-$xyz->[1])**2+
+                    ($xyz0->[2]-$xyz->[2])**2);
             if( $maxdiff && $diff > $maxdiff )
             {
                 print " Offset for $code too large - not updating\n" if $verbose;
@@ -68,7 +85,7 @@ eval
                 next;
             }
             printf " Updating %s: offset %.3f\n",$code,$diff if $verbose > 1;
-            $crdstn->xyz($xyz1);
+            $crdstn->xyz($xyz);
             $crdstn->flag($flag) if $flag ne '';
             $nupd++;
             $maxoffset = $diff if $diff > $maxoffset;
@@ -77,17 +94,17 @@ eval
 
     if( ! $crdin )
     {
-        my ($startdate,$enddate)=$snx->obsDates();
-
         $crd->datum();
-        $crd->epoch(($startdate+$enddate)/2);
     }
 
+    $crd->epoch($epoch);
     $crd->filename($crdout);
     $crd->write();
 
     if( $verbose )
     {
+        my $epochstr=seconds_datetime($epoch);
+        print " Coordinates calculated at epoch $epochstr\n";
         print " $nnew stations added\n" if $nnew;
         printf " %d stations updated - max coordinate difference %.4fm\n",
             $nupd,$maxoffset if $nupd;
@@ -134,6 +151,10 @@ file are updated, otherwise all stations in the original file are
 updated.  If an output coordinate file is specified then the output
 will be written to that.
 
+Only updates coordinates if the code is unique in the SINEX file 
+(ie only on marks associated with the site for which the code 
+applies), and if a coordinate can be calculated at the required epoch.
+
 =head1 Options
 
 Valid options are:
@@ -163,6 +184,18 @@ or if that is not defined then 'SNX'
 Maximum acceptable difference in coordinates in metres.  Coordinates
 updates are not applied if the SINEX coordinate differs from the 
 input file coordinate by more than this amount.
+
+=item -e epoch
+
+Epoch for which coordinates are calculated.  The default is the epoch of 
+the input coordinate file, if defined, otherwise the middle of the range
+of observations specified in the SINEX file.
+
+=item -x #
+
+Coordinate extrapolation option. A value between 0 and 3 which specifies 
+how to extrapolate the coordinate if none matches the calculation epoch.
+For options see LINZ::GNSS::SinexFile
 
 =item -d datum
 
