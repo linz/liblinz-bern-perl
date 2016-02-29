@@ -23,7 +23,8 @@ my $maxdiff=$opts{m} || 0;
 my $datum=$opts{d} || 'IGb08';
 my $verbose=$opts{V} ? 2 : $opts{v} ? 1 : 0;
 my $codeonly=$opts{c};
-my $epoch=$opts{e} ? parse_gnss_date($opts{e}) : 0;
+my $epoch=$opts{e};
+$epoch=parse_gnss_date($opts{e}) if $epoch !~ /^(sinex|crd|)$/;
 my $extrapolation=$opts{x} // 3;
 
 my $crdin=$ARGV[1];
@@ -33,8 +34,8 @@ $crdin='' if ! $updateonly && ! -f $crdin;
 $crdin='' if $overwrite;
 
 my $crd=new LINZ::BERN::CrdFile($crdin );
-$epoch=$crd->epoch() if ! $epoch && $crdin;
-if( ! $epoch )
+$epoch=$crd->epoch() if ($epoch eq '' || $epoch eq 'crd') && $crdin;
+if( $epoch =~ /^(sinex|crd|)$/ )
 {
     my ($startdate,$enddate)=$snx->obsDates();
     $epoch=($startdate+$enddate)/2;
@@ -189,7 +190,8 @@ input file coordinate by more than this amount.
 
 Epoch for which coordinates are calculated.  The default is the epoch of 
 the input coordinate file, if defined, otherwise the middle of the range
-of observations specified in the SINEX file.
+of observations specified in the SINEX file.  Can be a specific date, or 
+'sinex' to use sinex epoch, or 'crd' to use coordinate file epoch'
 
 =item -x #
 
