@@ -91,7 +91,8 @@ sub SetBerneseEnv
     while(my $line=<$lf>)
     {
         if( $line=~/^export\s+(\w+)=\"([^\"]*)\"\s*$/ ||
-            $line=~/^export\s+(\w+)=(\`[^\`]*\`)\s*$/ )
+            $line=~/^export\s+(\w+)=(\`[^\`]*\`)\s*$/ ||
+            $line=~/^export\s+(\w+)=(\S*?)\s*$/ )
         {
             my($var,$value)=($1,$2);
             $value =~ s/\$\{(\w+)\}/$ENV{$1}/eg;
