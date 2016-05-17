@@ -72,8 +72,8 @@ if( $logfilere ne '')
                     my $rename=$sta->matchName($code);
                     return if ! $rename;
                 }
-                my $sort=$+{yyyy}.$+{mm}.$+{dd}.$+{ddd}.$filename;
-                $codes{$code}=[$filepath,$sort] if ! exists $codes{$code} || $codes{$code}->[1] < $sort;
+                my $sort=$+{yyyy}.$+{mm}.$+{dd}.$+{doy}.$filename;
+                $codes{$code}=[$filepath,$sort] if ! exists $codes{$code} || $codes{$code}->[1] lt $sort;
             }
             elsif( ! $usenamecode ) 
             {
