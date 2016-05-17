@@ -110,7 +110,7 @@ foreach my $logfile (@logfiles)
     {
         $name=$sitelog->code;
     }
-    my $updates=$sta->loadIGSSiteLog($sitelog,name=>$name,update=>0);
+    my $updates=$sta->loadIGSSiteLog($sitelog,name=>$name,update=>1);
     if( $crds )
     {
         my %names=();
