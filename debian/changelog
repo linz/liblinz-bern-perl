@@ -1,3 +1,12 @@
+liblinz-bern-perl (1.23.4-1) trusty; urgency=medium
+
+  [ Dionne Hansen ]
+  * Lines added to check for the antenna radome information in both the antenna type field and radome type field of the log files.
+
+  [ Chris Crook ]
+
+ -- Chris Crook <ccrook@linz.govt.nz>  Fri, 10 Jun 2016 07:28:10 +1200
+
 liblinz-bern-perl (1.23.3-1) trusty; urgency=medium
 
   * Another bug in igslog_to_sta
