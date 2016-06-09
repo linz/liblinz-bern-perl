@@ -887,10 +887,17 @@ sub loadIGSSiteLog
         {
             $nant++;
             my $anttype=$antrec->{antennaType};
+            my $radtype=$antrec->{antennaRadomeType};
             $anttype =~ s/\s+$//;
-            if( length($anttype) < 17 )
+            $radtype = uc($radtype);            
+
+            if( length($anttype) < 17 && ($radtype eq '' || $radtype eq 'NONE'))
             {
                 $anttype = _setAntennaRadome($anttype,'NONE');
+            }
+            elsif( length($anttype) < 17 && length($radtype) == 4 )
+            {
+                $anttype = _setAntennaRadome($anttype,$radtype);
             }
             $info->{anttype}=$anttype;
             $info->{antserno}=$antrec->{serialNumber};
