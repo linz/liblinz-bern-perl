@@ -17,27 +17,27 @@ use LINZ::BERN::PcfFile;
 my $syntax=<<EOD;
 get_pcf_opts:  Script to extract the options used in a PCF file into a CSV file.
 
-Syntax: get_pcf_opts [-dcamt] pcf_name [csv_file_name]
+Syntax: get_pcf_opts [-dcamt] [-o prefix] pcf_name [csv_file_name]
 
-The script can be run either in the GPSUSER directory or with the Bernese environment
-already defined (eg by ". bernese52 -e").
+The script can be run either in the GPSUSER directory or with the Bernese 
+environment already defined (eg by ". bernese52 -e").
 
-If the -d option is selected then the pcf_name is taken as the name of a directory
-to search for panel files (*.INP).  Subdirectories will also be search recursively.
+Options are:
 
-If the -m option is selected then directory searches will include MENU_xxx.INP, which
-are otherwise ignored.
+   -d      pcf_name is taken as the name of a directory to search 
+           recursively for panel files (*.INP).  
 
-If the -a option is selected then only the active options are output.  Those are
-the options for which active conditions apply, and which are in panels listed as
-active.
+   -m      directory searches will include MENU_xxx.INP
 
-If the -c option is selected then the panel files will be compared with the reference
-file in the Bernese \${X}/GPS/PAN directory to check that the defined options match
-and have the same definition.
+   -o pfx  directory searches will only include OPT/pfx... directories
 
-If the -t option is selected then the comparison will also compare the description
-of the parameter.
+   -a      Only include active options in output
+
+   -c      Compare parameters with reference files in \$X/GPS/PAN and output
+           significant differences
+
+   -t      Comparison will include parameter descriptions.
+
 
 The default csv file name is the PCF name with .csv appended, or if the -d options
 is specified 'params.csv'.
@@ -45,17 +45,29 @@ is specified 'params.csv'.
 EOD
 
 my %opts;
-getopts('adcmt',\%opts);
+getopts('adcmto:',\%opts);
 my $activeonly=$opts{a};
 my $scandir=$opts{d};
 my $checkpan=$opts{c}; 
 my $listmenus=$opts{m};
 my $compdesc=$opts{t};
+my $optpfx=$opts{o};
 
 scalar(@ARGV)>=1 || die $syntax;
 my $pcf=$ARGV[0];
 
 my $params=$scandir ? scanDirectoryPanelFiles($pcf,$listmenus) : scanPcfPanelFiles($pcf);
+if( $optpfx )
+{
+    my @filtered=();
+    foreach my $fp (@$params)
+    {
+        my $opt=$fp->{opt};
+        next if substr($opt,0,length($optpfx)) ne $optpfx;
+        push(@filtered,$fp);
+    }
+    $params=\@filtered;
+}
 if( $checkpan )
 {
     my $csvf=$ARGV[1] || $scandir ? 'param_errors.csv' : $pcf.'_errors.csv';
@@ -131,6 +143,19 @@ sub scanDirectoryPanelFiles
     return wantarray ? @param : \@param;
 }
 
+sub parsePanelValues
+{
+    my($valuestr)=@_;
+    $valuestr=' '.$valuestr.' ';
+    my @values=();
+    foreach my $v ($valuestr =~ /\"((?:[^\"]|\"\")*)\"/g)
+    {
+        $v =~ s/\"\"/\"/g;
+        push(@values,$v);
+    }
+    return wantarray ?  @values : \@values;
+}
+
 sub scanBernesePanelFile
 {
     my ($panfile) = @_;
@@ -192,7 +217,7 @@ sub scanBernesePanelFile
             }
             next;
         }
-        next if $l !~ /^\s*(\w+)\s+(\d+)(?:\s+\"([^\"]*)\")?\s*$/;
+        next if $l !~ /^\s*(\w+)\s+(\d+)(?:\s+(\".*\"))?\s*$/;
         my ($param,$count,$value)=($1,$2,$3);
         if( $count > 1 )
         {
@@ -200,11 +225,10 @@ sub scanBernesePanelFile
             while($count--)
             {
                 $l = <$inpf>;
-                push(@$value,$1) if $l =~ /^\s*\"([^\"]*)\"\s*$/;
+                $value .= ' '.$1 if $l =~ /^\s*(\".*\")\s*$/;
             }
-            $value=join("\n",@$value);
         }
-        $value =~ s/\"/\"\"/g;
+        $value=join("\n",parsePanelValues($value));
         my $cond='1';
         my @prmdef=();
         while( $line = <$inpf> )
@@ -284,7 +308,7 @@ sub splitPrmDef
         {
             $defs->{$1} = $2;
         }
-        else
+        elsif( $d =~ /\S/ )
         {
             $defs->{$d}=1;
         }
