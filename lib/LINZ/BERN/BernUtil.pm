@@ -1326,18 +1326,19 @@ sub AntennaList
             last if ! $line;
             my $ant=substr($line,0,20);
             next if $ant !~ /\S/;
-            next if $ant =~ /^MW\s+BLOCK/;
-            next if $ant =~ /^MW\s+GEO/;
-            next if $ant =~ /^MW\s+GLONASS/;
-            next if $ant =~ /^SLR\s+REFL/;
+            next if $ant =~ /^MW\s+/;
+            next if $ant =~ /^SLR\s+/;
             # Filter out antennae not calibrated for dual frequency GPS obs
             my $ngpsfrq=0;
             while( $line !~ /^\s*$/ )
             {
                 my $sys=substr($line,28,1);
-                next if $sys ne 'G';
-                $ngpsfrq=substr($line,32,3)+0;
-                last;
+                if( $sys eq 'G' )
+                {
+                    $ngpsfrq=substr($line,32,3)+0;
+                    last;
+                }
+                $line=<$af>;
             }
             next if $ngpsfrq < 2;
             push(@$LoadedAntennae,$ant);
