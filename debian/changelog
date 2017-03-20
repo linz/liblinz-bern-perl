@@ -1,3 +1,9 @@
+liblinz-bern-perl (1.24.1-1) xenial; urgency=medium
+
+  * Fixing infinite loop bug in AntennaList code
+
+ -- Chris Crook <ccrook@linz.govt.nz>  Tue, 21 Mar 2017 12:02:55 +1300
+
 liblinz-bern-perl (1.24.0-1) xenial; urgency=medium
 
   * Adding options for comparing panel file parameters
