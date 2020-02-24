@@ -86,14 +86,14 @@ sub MarkData
             if $verbose > 1;
         return undef;
     }
-    if($markdata->{official_coordsys} ne 'NZGD2000')
+    if($markdata->{coordinate}->{coordsys} ne 'NZGD2000')
     {
         print " Not $action mark $code - coordinate not NZGD2000"
             if $verbose > 1;
         return undef;
     }
-    my $llh=$markdata->{official_coordinate};
-    my $crd=$csnzgd2000->coord($llh->[1],$llh->[0],$llh->[2]);
+    my $llh=$markdata->{coordinate};
+    my $crd=$csnzgd2000->coord($llh->{latitude},$llh->{longitude},$llh->{height} || 0.0);
     $crd->setepoch($year);
     my $xyz=$crd->as($csitrf);
     $markdata->{xyz}=[$xyz->[0],$xyz->[1],$xyz->[2]];
@@ -144,7 +144,7 @@ eval
         my $name=$code;
         if( ! $codeonly )
         {
-            $name = $name.' '.$markdata->{names}->{CURR};
+            $name = $name.' '.$markdata->{name};
         }
         my $newstn=new LINZ::BERN::CrdFile::Station($name,$code,$xyz,$newflag);
         print " Adding station $code\n" if $verbose > 1;
