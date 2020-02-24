@@ -1,3 +1,10 @@
+liblinz-bern-perl (1.25.0-1) bionic; urgency=medium
+
+  * Updating build configuration for ubuntu 18.04
+  * Updating gdb2berncrd for changes to LINZ::GDB JSON format
+
+ -- Chris Crook <ccrook@linz.govt.nz>  Tue, 25 Feb 2020 12:27:29 +1300
+
 liblinz-bern-perl (1.24.1-1) xenial; urgency=medium
 
   * Fixing infinite loop bug in AntennaList code
