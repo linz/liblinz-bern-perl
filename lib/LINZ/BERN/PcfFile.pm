@@ -10,7 +10,8 @@ Package to load a Bernese PCF file
 
 Assumes that the Bernese environment is installed to create the $U
 environment variable.  Reads from the /PCF/, /SCRIPT/ or /USERSCPT/,
-and /OPT/ directories.
+and /OPT/ directories.  Can provide a search path for reference scripts
+as a : separated list.
 
 Synopsis:
 
@@ -53,19 +54,32 @@ sub new
         $scriptdir=substr($pcfdir,0,-3).'SCRIPT';
         if( ! -d $scriptdir )
         {
-            $scriptdir=substr($pcfdir,0,-3).'USERSCPT'
+            $scriptdir=substr($pcfdir,0,-3).'USERSCPT';
         }
         $optdir='' if ! -d $optdir;
         $scriptdir='' if ! -d $scriptdir;
+    }
+    my $scriptdirs=[];
+    push(@$scriptdirs,$scriptdir) if -d $scriptdir;
+    foreach my $sd (split(':',$refscriptdir))
+    {
+        next if ! $sd;
+        $sd .= '/GPS/USERSCPT' if -d $sd.'/GPS/USERSCPT';
+        push(@$scriptdirs,$sd) if -d $sd;
+    }
+    if( ! scalar(@$scriptdirs) )
+    {
+        carp("Cannot examine scripts as script directory not found\n");
+        return;
     }
     my $self=bless
     {
         pcfdir=>$pcfdir,
         optdir=>$optdir,
-        scriptdir=>$scriptdir,
-        refscriptdir=>$refscriptdir || $scriptdir,
+        scriptdirs=>$scriptdirs,
         filename=>$filename,
         pcfname=>$pcfname,
+        scriptfiles=>{},
         pids=>[],
 
     }, $class;
@@ -121,24 +135,23 @@ sub read
 
     # Check what programs are used by each script
     
-    my $scriptdir=$self->{scriptdir};
-    my $refscriptdir=$self->{refscriptdir};
+    my $scriptdirs=$self->{scriptdirs};
     my %scripts=();
-    if( ! -d $scriptdir && ! -d $refscriptdir )
-    {
-        carp("Cannot examine scripts as script directory not found\n");
-        return;
-    }
-    
+
     foreach my $pid (@$pids)
     {
         my $script=$pid->{script};
         if( ! exists $scripts{$script} )
         {
-            my $scriptfile=$scriptdir.'/'.$script;
-            $scriptfile=$refscriptdir.'/'.$script if ! -e $script;
+            my $scriptfile;
+            foreach my $sd (@$scriptdirs)
+            {
+                $scriptfile="$sd/$script";
+                last if -e $scriptfile;
+            }
             my $pgms={};
-            CORE::open(my $scpf,$scriptfile) || carp("Cannot open script file $scriptfile\n");
+            CORE::open(my $scpf,$scriptfile) || carp("Cannot find script $script\n");
+            $self->{scriptfiles}->{$script}=$scriptfile;
             if( $scpf )
             {
                 my $vars={};

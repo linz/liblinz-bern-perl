@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/bin/perl 
 #
 #  Script to extract the files belonging to a PCF.  Processes the PCF file
 #  to identify the scripts and options, the process each script to identify
@@ -19,7 +19,7 @@ use Getopt::Std;
 my $syntax=<<EOD;
 
 Synopsis: get_pcf_files PCF_file
-          get_pcf_files -z zipfile PCF_file
+          get_pcf_files [-v] -z zipfile PCF_file
 
 Prints a list of files used by a Bernese PCF, or compiles them into
 a zip file.
@@ -29,10 +29,13 @@ Must be run in the GPSUSER directory.
 EOD
 
 my %opts;
-getopts("hz:",\%opts);
+getopts("hz:s:v",\%opts);
 
 die $syntax if $opts{h};
 my $zipfile=$opts{z};
+my $refscriptdir = $opts{s};
+$refscriptdir .= ':'.$ENV{X} if -d $ENV{X};
+my $verbose = $opts{v};
 
 scalar(@ARGV)==1 || die $syntax;
 
@@ -40,8 +43,11 @@ my $pcf=$ARGV[0];
 $pcf .= '.PCF' if $pcf !~ /\.PCF$/i;
 $pcf = "PCF/$pcf";
 
+my $scriptdir='SCRIPT';
+$scriptdir='USERSCPT' if ! -d 'SCRIPT' && -d 'USERSCPT';
+
 -d 'PCF' || die "PCF directory not found, are you in a GPSUSER directory?\n";
--d 'SCRIPT' || die "SCRIPT directory not found, are you in a GPSUSER directory?\n";
+-d $scriptdir || die "SCRIPT directory not found, are you in a GPSUSER directory?\n";
 -d 'OPT' || die "OPT directory not found, are you in a GPSUSER directory?\n";
 -e $pcf || die "Cannot open PCF file $pcf\n";
 
@@ -49,7 +55,7 @@ $pcf = "PCF/$pcf";
 # Process the PCF file to find the list of scripts and options it uses...
 
 $ENV{U}='.';
-my $pcff=LINZ::BERN::PcfFile->open($pcf);
+my $pcff=LINZ::BERN::PcfFile->open($pcf,$refscriptdir);
 
 my @files=($pcf);
 my %scripts=();
@@ -88,7 +94,6 @@ if( ! $zipfile )
     {
         print "$f\n";
     }
-
 }
 
 else
@@ -96,7 +101,11 @@ else
     my $zip=Archive::Zip->new();
     foreach my $f (@files)
     {
-        $zip->addFile($f);
+        my $src=$f;
+        $src=$pcff->{scriptfiles}->{$1} if $src=~ /^SCRIPT\/(\w+)$/;
+        die "Cannot find file $src\n" if ! -f $src;
+        print "Adding $f\n" if $verbose;
+        $zip->addFile($src, $f);
     }
     if( $zip->writeToFileNamed($zipfile) != AZ_OK )
     {
