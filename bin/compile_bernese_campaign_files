@@ -1,0 +1,150 @@
+#!/usr/bin/perl
+
+use strict;
+use Archive::Zip qw/ :ERROR_CODES /;
+
+my $syntax=<<EOD;
+Syntax: compile_bernese_campaign_files target-zip-file files ...
+
+Compiles files into a zip with files located in the appropriate
+campaign subdirectory.  Uses default directories as defined in 
+GPS/HLP/MENU_EXT.HLP
+EOD
+
+my $extdirs={
+  BRD=>'ORB',
+  OPR=>'ORB',
+  PRE=>'ORB',
+  TAB=>'ORB',
+  STD=>'ORB',
+  RPR=>'ORB',
+  ELE=>'ORB',
+  ERP=>'ORB',
+  IEP=>'ORB',
+  GCC=>'ORB',
+  CLK=>'ORB',
+  DCB=>'ORB',
+  ISB=>'ORB',
+  BIA=>'ORB',
+  IRV=>'ORB',
+  CPF=>'ORB',
+  STV=>'ORB',
+  ACC=>'ORB',
+  ATT=>'ORB',
+  MAN=>'ORB',
+  CHO=>'ORB',
+  POE=>'ORB',
+  KVL=>'STA',
+  AUX=>'ORB',
+  OXO=>'ORX',
+  RXO=>'RAW',
+  SMT=>'RAW',
+  OXN=>'ORX',
+  RXN=>'RAW',
+  OXG=>'ORX',
+  RXG=>'RAW',
+  OGA=>'ORX',
+  RGA=>'RAW',
+  RXM=>'RAW',
+  CZH=>'OBS',
+  CZO=>'OBS',
+  PZH=>'OBS',
+  PZO=>'OBS',
+  RZH=>'OBS',
+  RZO=>'OBS',
+  CSH=>'OBS',
+  CSO=>'OBS',
+  PSH=>'OBS',
+  PSO=>'OBS',
+  CRD=>'STA',
+  VEL=>'STA',
+  KIN=>'STA',
+  ECC=>'STA',
+  PSD=>'STA',
+  STA=>'STA',
+  BLQ=>'STA',
+  ATL=>'STA',
+  FIX=>'STA',
+  SIG=>'STA',
+  SOS=>'STA',
+  ABB=>'STA',
+  PLD=>'STA',
+  BSL=>'STA',
+  CLU=>'STA',
+  CLB=>'STA',
+  AZI=>'STA',
+  SES=>'STA',
+  RGB=>'STA',
+  TRP=>'ATM',
+  TRO=>'ATM',
+  ION=>'ATM',
+  INX=>'ATM',
+  MET=>'ATM',
+  GRD=>'GRD',
+  OUT=>'OUT',
+  PLT=>'OUT',
+  SUM=>'OUT',
+  LST=>'OUT',
+  SMC=>'OUT',
+  SME=>'OUT',
+  RES=>'OUT',
+  RXC=>'OUT',
+  COV=>'OUT',
+  WGT=>'OUT',
+  PHG=>'OUT',
+  PHH=>'OUT',
+  EDT=>'OUT',
+  DEL=>'OUT',
+  EVL=>'STA',
+  EST=>'SOL',
+  NEQ=>'SOL',
+  ONQ=>'SOL',
+  SNX=>'SOL',
+  FSO=>'ORB',
+  FRP=>'ORB',
+  FCZ=>'OBS',
+  FPZ=>'OBS',
+  FCS=>'OBS',
+  FPS=>'OBS',
+  FRZ=>'OBS',
+  FRS=>'OUT',
+  FN0=>'SOL',
+  FNQ=>'SOL',
+  BPEOUT=>'BPE',
+  BPERUN=>'BPE',
+  BPEPRT=>'BPE',
+  BPELOG=>'BPE',
+  };
+
+die $syntax if ! @ARGV;
+my $zipfile=shift @ARGV;
+die "Invalid zip file $zipfile - must be .zip\n" if $zipfile !~ /\.zip$/;
+
+my @files=();
+foreach my $f (@ARGV)
+{
+  die "Cannot open file $f\n" if ! -f $f;
+  if( $f !~ /\.([A-Z]{3,6})$/ || ! exists $extdirs->{$1} )
+  {
+    print "Skipping $f - unrecognized extension\n";
+    next;
+  };
+  my $subdir=$extdirs->{$1}.'/';
+  my $name=$f;
+  $name =~ s/.*\///;
+  $name="$subdir$name";
+  push(@files,[$f,$name]);
+}
+
+my $zip=Archive::Zip->new();
+foreach my $f (@files)
+{
+    my($src,$tgt)=@$f;
+    print "Adding $tgt\n";
+    $zip->addFile($src, $tgt);
+}
+if( $zip->writeToFileNamed($zipfile) != AZ_OK )
+{
+    die "Cannot create ZIP file $zipfile\n";
+}
+
