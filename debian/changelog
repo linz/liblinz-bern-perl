@@ -1,3 +1,10 @@
+liblinz-bern-perl (1.26.0-1) bionic; urgency=medium
+
+  * Updating get_pcf_files to simplify packaging uninstalled PCFs
+  * Adding script to compile campaign files into a ZIP file
+
+ -- Chris Crook <ccrook@linz.govt.nz>  Mon, 2 Mar 2020 09:00:00 +1300
+
 liblinz-bern-perl (1.25.0-1) bionic; urgency=medium
 
   * Updating build configuration for ubuntu 18.04
