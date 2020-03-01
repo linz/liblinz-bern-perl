@@ -64,6 +64,7 @@ sub new
     foreach my $sd (split(':',$refscriptdir))
     {
         next if ! $sd;
+        $sd .= '/USERSCPT' if -d $sd.'/USERSCPT';
         $sd .= '/GPS/USERSCPT' if -d $sd.'/GPS/USERSCPT';
         push(@$scriptdirs,$sd) if -d $sd;
     }
