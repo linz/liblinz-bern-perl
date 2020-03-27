@@ -1,9 +1,9 @@
-liblinz-bern-perl (1.26.0-1) bionic; urgency=medium
+liblinz-bern-perl (1.27.0-1) bionic; urgency=medium
 
-  * Updating get_pcf_files to simplify packaging uninstalled PCFs
-  * Adding script to compile campaign files into a ZIP file
+  * Adding option to install extra files in pcf zip file.
+  * Adding option to create user writeable $X/GEN directory.
 
- -- Chris Crook <ccrook@linz.govt.nz>  Mon, 2 Mar 2020 09:00:00 +1300
+ -- Chris Crook <ccrook@linz.govt.nz>  Fri, 27 Mar 2020 09:00:00 +1300
 
 liblinz-bern-perl (1.25.0-1) bionic; urgency=medium
 

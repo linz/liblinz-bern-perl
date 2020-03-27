@@ -145,6 +145,16 @@ if there is already a user directory in the specified location.
 
 The location in which the user environment will be created.  The default is /tmp/bernese_${user}/user$$
 
+=item CustomGenDir=>1
+
+If true then the script will create a user customisable copy of ${X}/GEN in ${U}/GEN.
+This allows installing custom files into GEN when the user does not have permission to
+install into the system file, for example SINEX file headers.  
+(Note: To do this it also creates a custom ${X} directory in ${U}/BERN52.  
+The custom directories contain symlinks to all the files in the original directories.
+It then resets X to point to ${U}/BERN52.)
+
+
 =item UserDirectorySettings=>string
 
 A new line delimited string of settings, as per default settings example below.  These are 
@@ -280,6 +290,20 @@ makedir ${U}/PCF
 makedir ${U}/SCRIPT
 EOD
 
+# Custom Gen Dir settings are required if script requires a custom
+# file in the GEN directory (eg SINEX template).  Need to create copy
+# of ${X} and ${X}/GEN as user may not have right to install files in
+# GEN.  
+
+our $CustomGenDirSettings=<<'EOD';
+makedir ${U}/GEN
+symlink ${X}/GEN ${U}/GEN/*
+makedir ${U}/BERN
+symlink ${U}/GEN ${U}/BERN/GEN
+symlink ${X} ${U}/BERN/*
+setenv X ${U}/BERN
+EOD
+
 our $DefaultBernDataSettings=<<'EOD';
 copy ${SRC}/PAN/MENU_CMP.INP ${P}/MENU_CMP.INP
 EOD
@@ -292,6 +316,7 @@ sub CreateRuntimeEnvironment
     my $userdir=$options{UserDirectory};
     my $datadir=$options{DataDirectory};
     my $overwrite=$options{CanOverwrite} || ! $userdir;
+    my $customgen=$options{CustomGenDir};
     my $user=getlogin;
     $userdir ||= "/tmp/bernese_$user/user$$";
     $datadir ||= "/tmp/bernese_$user/data$$";
@@ -370,6 +395,8 @@ sub CreateRuntimeEnvironment
             $settingssrc="$userdir/settings";
         }
 
+        $settings=$CustomGenDirSettings."\n".$settings if $customgen;
+
         # Process the settings 
 
         foreach my $line (split(/\n/,$settings))
@@ -392,19 +419,41 @@ sub CreateRuntimeEnvironment
             }
             elsif( $key eq 'symlink' && @values >= 2 )
             {
-                die "Bernese environment symlink target $values[0] doesn't exist\n"
-                   if ! -e $values[0];
                 my $target=pop(@values);
-                my $linked=0;
+                my $source;
                 foreach my $v (@values)
                 {
                     next if ! -e $v;
-                    symlink($v,$target) ||
-                        die "Cannot create symbolic link from $v to $target\n";
-                    $linked=1;
+                    $source = $v;
                     last;
                 }
-                die "Cannot create symbolic link for $target\n" if ! $linked;
+                die "Cannot create bernese environment - cannot find source for $target\n" if ! $source;
+                # If the target is a directory then copying a directory
+                if( $target =~ /^(.*)\/\*$/ )
+                {
+                    if( ! -d $source )
+                    {
+                        die "Cannot create bernese environment - $source is not a directory\n";
+                    }
+                    my $targetdir=$1;
+                    make_path($targetdir) if ! -d $targetdir;
+                    opendir(my $sh,$source) || die "Cannot open bernese env source directory $source\n";
+                    while( my $file = readdir($sh) )
+                    {
+                        next if $file eq '.' || $file eq '..';
+                        my $sf= "$source/$file";
+                        my $tf = "$targetdir/$file";
+                        # Don't overwrite existing files/dirs
+                        next if -e $tf;
+                        symlink($sf,$tf) || die "Cannot create symbolic link from $sf to $tf\n";
+                    }
+                }
+                else
+                {
+                    symlink($source,$target) ||
+                        die "Cannot create symbolic link from $source to $target\n";
+                }
+
             }
             elsif( $key eq 'copy' && @values == 2 )
             {
@@ -437,6 +486,17 @@ sub CreateRuntimeEnvironment
                         }
                     }
                 }
+            }
+            elsif( $key eq 'setenv' )
+            {
+                my $envvar = $values[0];
+                my $envval = $values[1];
+                die "Bernese evironment setting setenv requires an environment variable name and value\n" 
+                    if $envvar eq '' || $envval eq '';
+                die "Bernese evironment setting setenv has invalid variable name $envvar\n" 
+                    if ! exists $bernenv->{$envvar};                    
+                $bernenv->{$envvar}=$envval;
+                $ENV->{$envvar}=$envval;
             }
             else
             {

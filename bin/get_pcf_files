@@ -19,12 +19,17 @@ use Getopt::Std;
 my $syntax=<<EOD;
 
 Synopsis: get_pcf_files PCF_file
-          get_pcf_files [-v] -z zipfile PCF_file
+          get_pcf_files [-v] -z zipfile PCF_file [additional files ...]
 
 Prints a list of files used by a Bernese PCF, or compiles them into
-a zip file.
+a zip file.  
 
-Must be run in the GPSUSER directory.  
+If compiling into a zip file then additional files that will be included
+into user directory.  Each file should end with a directory name and filename
+that are used to install into user directory.  Directory names must be 3 capital 
+letters only. 
+
+Script should be run in the GPSUSER directory.  
 
 EOD
 
@@ -37,9 +42,9 @@ my $refscriptdir = $opts{s};
 $refscriptdir .= ':'.$ENV{X} if -d $ENV{X};
 my $verbose = $opts{v};
 
-scalar(@ARGV)==1 || die $syntax;
+scalar(@ARGV)==1 || ($zipfile && scalar(@ARGV)>1) || die $syntax;
 
-my $pcf=$ARGV[0];
+my $pcf=shift(@ARGV);
 $pcf .= '.PCF' if $pcf !~ /\.PCF$/i;
 $pcf = "PCF/$pcf";
 
@@ -77,6 +82,7 @@ foreach my $pid ($pcff->pids())
 
 foreach my $optdir (keys %optdirs)
 {
+    die "Cannot find options directory OPT/$optdir\n" if ! -d "OPT/$optdir";
     foreach my $f (glob "OPT/$optdir/MENU*.INP")
     {
         $pan{$f}=1;
@@ -98,6 +104,13 @@ if( ! $zipfile )
 
 else
 {
+    my @extrafiles=();
+    foreach my $extra (@ARGV)
+    {
+        die "Cannot find extra file $extra\n" if ! -e $extra;
+        die "Invalid directory name in $extra\n" if $extra !~ /^(:?.*\/)?([A-Z]{3}\/\S+)$/;
+        push(@extrafiles,[$extra,$1]);
+    }
     my $zip=Archive::Zip->new();
     foreach my $f (@files)
     {
@@ -106,6 +119,12 @@ else
         die "Cannot find file $src\n" if ! -f $src;
         print "Adding $f\n" if $verbose;
         $zip->addFile($src, $f);
+    }
+    foreach my $extrafile (@extrafiles)
+    {
+        my($src,$f)=@$extrafile;
+        print "Adding $f\n" if $verbose;
+        $zip->addFile($src,$f);
     }
     if( $zip->writeToFileNamed($zipfile) != AZ_OK )
     {
