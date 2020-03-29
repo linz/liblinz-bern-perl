@@ -19,6 +19,7 @@ use strict;
 package LINZ::BERN::BernUtil;
 our $VERSION='1.1.0';
 
+use English;
 use LINZ::BERN::SessionFile;
 use LINZ::BERN::CrdFile;
 use LINZ::GNSS::RinexFile;
@@ -317,7 +318,7 @@ sub CreateRuntimeEnvironment
     my $datadir=$options{DataDirectory};
     my $overwrite=$options{CanOverwrite} || ! $userdir;
     my $customgen=$options{CustomGenDir};
-    my $user=getlogin;
+    my $user=(getpwuid($REAL_USER_ID))[0];
     $userdir ||= "/tmp/bernese_$user/user$$";
     $datadir ||= "/tmp/bernese_$user/data$$";
 

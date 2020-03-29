@@ -1,3 +1,7 @@
+liblinz-bern-perl (1.27.1-1) bionic; urgency=medium
+
+  * Fix using user id to name temporary directories
+
 liblinz-bern-perl (1.27.0-1) bionic; urgency=medium
 
   * Adding option to install extra files in pcf zip file.
