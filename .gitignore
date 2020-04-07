@@ -3,3 +3,8 @@ _build
 Build
 MYMETA.json
 MYMETA.yml
+.vscode
+temp
+debian/.debhelper
+debian/files
+debian/liblinz-bern-perl*

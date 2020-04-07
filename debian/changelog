@@ -1,6 +1,10 @@
-liblinz-bern-perl (1.27.1-1) bionic; urgency=medium
+liblinz-bern-perl (1.28.1-1) bionic; urgency=medium
 
+  * Adding InstallCampaignFiles function
   * Fix using user id to name temporary directories
+  * Adding run_bernese_pcf function to provide Docker entry point
+
+ -- Chris Crook <ccrook@linz.govt.nz>  Mon, 6 Apr 2020 13:00:00 +1200
 
 liblinz-bern-perl (1.27.0-1) bionic; urgency=medium
 

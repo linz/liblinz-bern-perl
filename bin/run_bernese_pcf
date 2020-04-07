@@ -1,0 +1,116 @@
+#!/usr/bin/perl
+
+use File::Copy::Recursive;
+use File::Path qw(make_path);
+use File::Slurp;
+use File::Spec;
+use LINZ::BERN::BernUtil;
+use LINZ::GNSS::Config;
+use LINZ::GNSS::Time qw(parse_gnss_date);
+use JSON;
+use Getopt::Std;
+
+my $syntax = <<EOD;
+run_bernese_pcf: Runs a bernese PCF file.  Can either run an installed PCF, or install and
+run a PCF.  The PCF is run in a temporary runtime environment. 
+
+Syntax:  run_bernese_pcf [options] PCF YYYY:DDD rinex_file ...
+         run_bernese_pcf -c configuration_file 
+         run_bernese_pcf -j json_configuration
+
+If run with -c or -j the program runs with all the options defined for LINZ::BERN::BernUtil::RunBerneseJob.
+The options are either read from a LINZ::GNSS::Config configuration (-c) or from a JSON dictionary (-j).
+
+Otherwise the program uses the following options:
+    PCF              name of the PCF to run
+    YYYY:DDD         session (note - currently only supports single UTC day sessions)
+    rinex_file ...   list of rinex files to use
+    -p zipfile       PCF zip file (created with get_pcf_files)
+    -f zipfile       Campaign zip files
+    -u cpufile       The name of the CPU file to use, default UNIX
+    -i campid        The name of the bernese campaign (default same as the PCF)
+    -t savedir       Target directory to which output is saved (default current dir)
+    -T campdir       Target directory for saving campaign files, otherwise savedir is used
+    -s               If present then the campaign files are saved in the target directory,
+                     otherwise only files copied to the SAVEDIR by the PCF
+    -S               Save the campaign if the script fails
+    -k               Do not delete runtime environment
+EOD
+
+my %opts;
+getopts('c:j:p:f:u:i:t:T:sSk',\%opts);
+
+my ($pcf,$session,@rinexfiles)=@ARGV;
+
+my $cfgfile=$opts{c};
+my $cfgjson=$opts{j};
+my $pcfzip=$opts{p};
+my $cmpzip=$opts{f};
+my $savdir=$opts{t} || '.';
+my $cpufile=$opts{u} || 'UNIX';
+my $jobid=$opts{i} || $pcf;
+my $campsavdir=$opts{T} || $savdir;
+my $savecamp=$opts{s};
+my $saveonfail=$opts{S};
+my $keepenv=$opts{k};
+
+die $syntax if ! $pcf || ! $session;
+die "Invalid PCF name $pcf\n" if $pcf !~ /^[A-Z_]{1,8}$/i;
+die "Invalid session $session\n" if $session ne 'auto' && $session !~  /^(19|20)\d\d\:[0123]\d\d$/;
+
+my %options = [];
+my $runcfg;
+if ( $cfgfile ) {
+    my $cfg = LINZ::GNSS::Config->new( $cfgfile );
+    $runcfg=$cfg->getAll();
+}
+elsif( $cfgjson ) {
+    my $json = read_file( $opts{j}, err_mode => 'quiet' );
+    die "Cannot read JSON config file $cfgjson\n" if $json eq '';
+    $runcfg = JSON::decode_json($json);
+    die "JSON $cfgjson configuration is not a dictionary\n" if ref($runcfg) ne 'HASH';
+}
+else
+{
+    $runcfg={};
+    $runcfg->{CustomUserFiles}=$pcfzip if $pcfzip;
+    $runcfg->{CampaignFiles}=$cmpzip if $cmpzip;
+    $runcfg->{CustomGenDir}=1;
+    $runcfg->{MakeSessionFile}=1;
+}
+    
+$runcfg->{CpuFile}=$cpufile if ! $runcfg->{CpuFile};
+$runcfg->{SetSession} = $session if $session ne 'auto';
+push(@{$runcfg->{RinexFiles}},@rinexfiles);
+$runcfg->{SaveDir} = File::Spec->rel2abs($savdir);
+$savdir=$runcfg->{SaveDir};
+make_path($savdir) if ! -d $savdir;
+my $result=LINZ::BERN::BernUtil::RunBerneseJob($pcf,KeepEnvironment=>1,%$runcfg);
+my $statuscode=$result->{statuscode};
+my $success=$statuscode eq 'OK';
+my $failmessage=$result->{status}->{fail_message};
+$failmessage=': '.$failmessage if $failmessage ne '';
+print("$statuscode$failmessage\n");
+$savecamp=$savecamp || ($saveonfail && ! $success);
+my $environment=$result->{environment};
+my $campaign=$result->{campaign};
+my $campdir=$campaign->{campaigndir};
+if( $savecamp && $environment )
+{
+    make_path($campsavdir) if ! -d $campsavdir;
+    if( !File::Copy::Recursive::dircopy( $campdir, $campsavdir ) ) 
+    {
+        print("Failed to copy $campdir to $campsavdir\n");
+    }
+}
+if( $keepenv )
+{
+    print("Campaign directory is $campdir\n");
+}
+else
+{
+    LINZ::BERN::BernUtil::DeleteRuntimeEnvironment($result->{environment});
+}
+exit($success ? 0 : 1);
+
+
