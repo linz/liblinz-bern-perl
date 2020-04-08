@@ -1,3 +1,9 @@
+liblinz-bern-perl (1.29.1-1) bionic; urgency=medium
+
+  * Adding support for BERNESE_GENDIR and BERNESE_DATAPOOL environment variables
+
+ -- Chris Crook <ccrook@linz.govt.nz>  Thu, 9 Apr 2020 11:00:00 +1200
+
 liblinz-bern-perl (1.28.1-1) bionic; urgency=medium
 
   * Adding InstallCampaignFiles function

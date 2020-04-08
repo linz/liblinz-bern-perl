@@ -342,8 +342,8 @@ sub CreateRuntimeEnvironment {
     my $datadir    = $options{DataDirectory};
     my $overwrite  = $options{CanOverwrite} || !$userdir;
     my $altgen     = $options{AlternativeGenDir};
-    my $customgen  = $options{CustomGenDir};
-    my $customdp   = $options{DatapoolDir};
+    my $customgen  = $options{CustomGenDir} || $ENV{BERNESE_GENDIR};
+    my $customdp   = $options{DatapoolDir} || $ENV{BERNESE_DATAPOOL};
     my $customsave = $options{SaveDir};
     my $customcpu  = $options{CpuFile};
     my $user       = ( getpwuid($REAL_USER_ID) )[0];
