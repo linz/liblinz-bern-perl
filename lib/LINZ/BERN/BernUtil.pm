@@ -347,8 +347,12 @@ sub CreateRuntimeEnvironment {
     my $customsave = $options{SaveDir};
     my $customcpu  = $options{CpuFile};
     my $user       = ( getpwuid($REAL_USER_ID) )[0];
-    $userdir ||= "/tmp/bernese_$user/user$$";
-    $datadir ||= "/tmp/bernese_$user/data$$";
+    if( ! $userdir || ! $datadir )
+    {
+        my $envbase=$ENV{BERNESE_JOBDIR} || "/tmp/bernese_$user";
+        $userdir ||= "$envbase/$$/user";
+        $datadir ||= "$envbase/$$/data";
+    }
 
     if ( -e $userdir ) {
         if ($overwrite) {

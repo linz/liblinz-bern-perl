@@ -11,6 +11,7 @@ Architecture: all
 Depends: ${misc:Depends},
     libconfig-general-perl,
     libarchive-zip-perl,
+    libfile-slurp-perl,
     libdbd-sqlite3-perl,
     libdbi-perl,
     libjson-perl,
