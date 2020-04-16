@@ -341,8 +341,8 @@ sub CreateRuntimeEnvironment {
     my $userdir    = $options{UserDirectory};
     my $datadir    = $options{DataDirectory};
     my $overwrite  = $options{CanOverwrite} || !$userdir;
-    my $altgen     = $options{AlternativeGenDir};
-    my $customgen  = $options{CustomGenDir} || $ENV{BERNESE_GENDIR};
+    my $altgen     = $options{AlternativeGenDir} || $ENV{BERNESE_GENDIR};
+    my $customgen  = $options{CustomGenDir};
     my $customdp   = $options{DatapoolDir} || $ENV{BERNESE_DATAPOOL};
     my $customsave = $options{SaveDir};
     my $customcpu  = $options{CpuFile};
@@ -1222,6 +1222,9 @@ sub RunPcf {
 
     $environment ||= {};
     my %options = %$environment;
+
+    # Check USER is set (used by Bernese)
+    $ENV{USER} =  (getpwuid($REAL_USER_ID))[0] if ! $ENV{USER};
 
     # Check that the PCF file exists
     #

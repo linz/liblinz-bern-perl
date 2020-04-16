@@ -1,3 +1,9 @@
+liblinz-bern-perl (1.30.1-1) bionic; urgency=medium
+
+  * Fixing implementation of BERNESE_GENDIR
+
+ -- Chris Crook <ccrook@linz.govt.nz>  The, 16 Apr 2020 12:00:00 +1200
+
 liblinz-bern-perl (1.30.0-1) bionic; urgency=medium
 
   * Add support for BERNESE_JOBDIR environment variable
