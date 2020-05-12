@@ -1,8 +1,9 @@
-liblinz-bern-perl (1.30.1-1) bionic; urgency=medium
+liblinz-bern-perl (1.31.0-1) bionic; urgency=medium
 
-  * Fixing implementation of BERNESE_GENDIR
+  * Adding environment variable BERNESE_SERVER_HOST to support 
+    overriding for AWS Batch+Docker implementation
 
- -- Chris Crook <ccrook@linz.govt.nz>  The, 16 Apr 2020 12:00:00 +1200
+ -- Chris Crook <ccrook@linz.govt.nz>  The, 12 May 2020 15:00:00 +1200
 
 liblinz-bern-perl (1.30.0-1) bionic; urgency=medium
 

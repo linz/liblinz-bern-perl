@@ -353,6 +353,7 @@ sub CreateRuntimeEnvironment {
         $userdir ||= "$envbase/$$/user";
         $datadir ||= "$envbase/$$/data";
     }
+    my $bernserver = $ENV{BERNESE_SERVER_HOST};
 
     if ( -e $userdir ) {
         if ($overwrite) {
@@ -387,6 +388,8 @@ sub CreateRuntimeEnvironment {
         $envvars->{D} = $customdp if $customdp;
         $envvars->{S} = $customsave if $customsave;
         $envvars->{CPU_FILE} = $customcpu if $customcpu;
+        $envvars->{BPE_SERVER_HOST} = $bernserver if $bernserver;
+
         my $bernenv = SetBerneseEnv( '', %$envvars );
 
         my $src = $options{SourceUserDirectory} || $ENV{X};
