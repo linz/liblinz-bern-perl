@@ -530,10 +530,10 @@ sub CreateRuntimeEnvironment {
                 my $envvar = $values[0];
                 my $envval = $values[1];
                 die
-"Bernese evironment setting setenv requires an environment variable name and value\n"
+"Bernese environment setting setenv requires an environment variable name and value\n"
                   if $envvar eq '' || $envval eq '';
                 die
-"Bernese evironment setting setenv has invalid variable name $envvar\n"
+"Bernese environment setting setenv has invalid variable name $envvar\n"
                   if !exists $bernenv->{$envvar};
                 $bernenv->{$envvar} = $envval;
                 $ENV->{$envvar}     = $envval;

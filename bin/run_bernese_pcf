@@ -62,6 +62,7 @@ my %options = [];
 my $runcfg;
 if ( $cfgfile ) {
     my $cfg = LINZ::GNSS::Config->new( $cfgfile );
+    $cfg->initLogger();
     $runcfg=$cfg->getAll();
 }
 elsif( $cfgjson ) {
