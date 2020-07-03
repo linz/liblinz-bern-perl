@@ -3,13 +3,13 @@ liblinz-bern-perl (1.31.0-1) bionic; urgency=medium
   * Adding environment variable BERNESE_SERVER_HOST to support 
     overriding for AWS Batch+Docker implementation
 
- -- Chris Crook <ccrook@linz.govt.nz>  The, 12 May 2020 15:00:00 +1200
+ -- Chris Crook <ccrook@linz.govt.nz>  Tue, 12 May 2020 15:00:00 +1200
 
 liblinz-bern-perl (1.30.0-1) bionic; urgency=medium
 
   * Add support for BERNESE_JOBDIR environment variable
 
- -- Chris Crook <ccrook@linz.govt.nz>  The, 16 Apr 2020 09:00:00 +1200
+ -- Chris Crook <ccrook@linz.govt.nz>  Thu, 16 Apr 2020 09:00:00 +1200
 
 liblinz-bern-perl (1.29.1-2) bionic; urgency=medium
 

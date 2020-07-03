@@ -389,6 +389,7 @@ sub CreateRuntimeEnvironment {
         $envvars->{S} = $customsave if $customsave;
         $envvars->{CPU_FILE} = $customcpu if $customcpu;
         $envvars->{BPE_SERVER_HOST} = $bernserver if $bernserver;
+        $envvars->{F_VERS} = 'GNUc' if $ENV{BERNESE_DEBUG} eq 'debug';
 
         my $bernenv = SetBerneseEnv( '', %$envvars );
 
@@ -1363,14 +1364,17 @@ sub RunPcfStatus {
           split( ' ', $failrun );
         my $pid     = $1 if $pidr =~ /^(\d+)/;
         my $lfile   = $logs{$pidr};
+        my $fulllog = '';
         my $prog    = '';
         my $failure = '';
         if ( $lfile && open( my $lf, "<$lfile" ) ) {
             while ( my $line = <$lf> ) {
+                $fulllog .= $line;
                 $prog = $1 if $line =~ /Call\s+to\s+(\w+)\s+failed\:/i;
                 if ( $line =~ /^\s*\*\*\*\s.*?\:\s*(.*?)\s*$/ ) {
                     $failure .= '/ ' . $1;
                     while ( $line = <$lf> ) {
+                        $fulllog .= $line;
                         last if $line =~ /^\s*$/;
                         $line =~ s/^\s*//;
                         $line =~ s/\s*$//;
@@ -1383,7 +1387,9 @@ sub RunPcfStatus {
         $result->{fail_pid}     = $pid;
         $result->{fail_script}  = $script;
         $result->{fail_prog}    = $prog;
-        $result->{fail_message} = substr( $failure, 2 );
+        $failure = substr($failure,2);
+        $failure = $fulllog if $failure =~ /^\s*$/ || $ENV{BERNESE_DEBUG} eq 'debug';
+        $result->{fail_message} = $failure;
     }
 
     return $result;
