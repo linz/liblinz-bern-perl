@@ -1,0 +1,6 @@
+Processing sitelogs/igs/bluf_20160128.log
+Site log for BLUF 50234M001 ignored as outside coordinate tolerance (offset 20.2 > 10.0)
+No updates taken from sitelogs/igs/bluf_20160128.log - names not matched
+Processing sitelogs/igs/corm_20160128.log
+Processing sitelogs/igs/zimm_20151216.log
+Created output/TESTIGS9.STA

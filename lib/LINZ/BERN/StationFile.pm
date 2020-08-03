@@ -13,85 +13,45 @@ the 001 (renaming), 002 (station information), and 003 (problem) sections of the
 
 =cut
 
-our $blockFields={
-    '001'=>[
-    {field=>"name",id=>"STATION NAME"},
-    {field=>"flag",id=>"FLG",default=>'001'},
-    {field=>"starttime",id=>"FROM"},
-    {field=>"endtime",id=>"TO"},
-    {field=>"srcname",id=>"OLD STATION NAME"},
-    {field=>"remark",id=>"REMARK"},
-    ],
+# Code compatibility mapping of field names.
+# Default is lower case field name
 
-    '002'=>[
-    {field=>"name",id=>"STATION NAME"},
-    {field=>"flag",id=>"FLG"},
-    {field=>"starttime",id=>"FROM"},
-    {field=>"endtime",id=>"TO"},
-    {field=>"rectype",id=>"RECEIVER TYPE",default=>"*** UNDEFINED ***"},
-    {field=>"recserno",id=>"RECEIVER SERIAL NBR",default=>"999999"},
-    {field=>"recno",id=>"REC #"},
-    {field=>"anttype",id=>"ANTENNA TYPE",default=>"*** UNDEFINED ***"},
-    {field=>"antserno",id=>"ANTENNA SERIAL NBR",default=>"999999"},
-    {field=>"antno",id=>"ANT #"},
-    {field=>"ecc_n",id=>"NORTH",default=>"999.9999"},
-    {field=>"ecc_e",id=>"EAST",default=>"999.9999"},
-    {field=>"ecc_u",id=>"UP",default=>"999.9999"},
-    {field=>"description",id=>"DESCRIPTION"},
-    {field=>"remark",id=>"REMARK"},
-    ],
+our $fieldmap={
+    'station name'=>'name',
+    'flg'=>'flag',
+    'from'=>'starttime',
+    'to'=>'endtime',
+    'old station name'=>'srcname',
+    'receiver type'=>'rectype',
+    'receiver serial nbr'=>'recserno',
+    'rec #'=>'recno',
+    'antenna type'=>'anttype',
+    'antenna serial nbr'=>'antserno',
+    'ant #'=>'antno',
+    'north'=>'_n',
+    'east'=>'_e',
+    'up'=>'_u',
+    'station name 1'=>'name1',
+    'station name 2'=>'name2',
+    'marker type'=>'marktype'
+};
 
-    '003'=>[
-    {field=>"name",id=>"STATION NAME"},
-    {field=>"flag",id=>"FLG"},
-    {field=>"starttime",id=>"FROM"},
-    {field=>"endtime",id=>"TO"},
-    {field=>"remark",id=>"REMARK"},
-   ],
-   };
+# North, East, Up fields are ambiguous.  This tries to fix it...
+our $offsettype={
+    '002'=> ['ecc'],
+    '003'=> ['offset','velocity']
+};
+
+our $defaults={
+    'flag'=>'001',
+    'rectype'=>'*** UNDEFINED ***',
+    'recserno'=>'999999',
+    'rectype'=>'*** UNDEFINED ***',
+    'recserno'=>'999999',    
+};
 
 our $defaultStartTime='1980 01 01 00 00 00';
 our $defaultEndTime='2099 12 31 23 59 59';
-
-sub _headerFormat
-{
-    my($header,$format)=@_;
-    my %found=();
-    foreach my $line (@{$header}[0 .. $#$header-1])
-    {
-        foreach my $f (@{$format})
-        {
-            next if exists $found{$f->{field}};
-            my $pos=index($line,$f->{id});
-            $found{$f->{field}}={col=>$pos,default=>$f->{default}} if $pos >= 0;
-        }
-    }
-    my $template=$header->[-1];
-    $template=~s/(Y+\s+M+\s+D+\s+H+\s+M+\s+S+)/'*' x length($1)/eig;
-    $template=~s/\*\./**/g;
-    $template=~s/\s/ /g;
-    $template=~s/[^\*\s]/ /g;
-    my $end=0;
-    foreach my $m ( $template =~ /(\*+|\s+)/g )
-    {
-        my $start=$end;
-        $end += length($m);
-        next if $m !~ /\*/;
-        foreach my $f (values %found)
-        {
-            if( $f->{col} >=$start && $f->{col} < $end )
-            {
-                $f->{col} = $start;
-                $f->{len} = $end-$start;
-            }
-        }
-    }
-    foreach my $f (@$format )
-    {
-        $found{$f->{field}}={col=>-1} if ! exists $found{$f->{field}};
-    }
-    return \%found;
-}
 
 sub _readTime
 {
@@ -104,21 +64,94 @@ sub _readTime
 sub _writeTime
 {
     my($seconds) = @_;
-    return sprintf("%04d %02d %02d %02d %02d %02d",seconds_ymdhms($seconds));
+    my $time='';
+    if( $seconds )
+    {
+        $time=sprintf("%04d %02d %02d %02d %02d %02d",seconds_ymdhms($seconds));
+        $time='' if $time ge $defaultEndTime; 
+    }
+    return $time;
 }
 
-sub _readData
+
+sub _readBlockHeader
 {
-    my($staf,$format)=@_;
+    my ($staf,$blockline)=@_;
+    my $line=$blockline || <$staf>;
+    my ($blkid,$blkname);
+    while($line)
+    {
+        if($line =~ /^TYPE\s+(\d\d\d)\:\s+(.*?)\s*$/)
+        {
+            ($blkid,$blkname)=($1,$2);
+            last;
+        }
+        croak("Unrecognized line in station information file: ".$line)
+            if $line =~ /\S/;
+        $line=<$staf>;
+    }
+    return undef if ! defined $blkid;
+    my $skip=<$staf>;
+    my $nameheader=<$staf>;
+    my $nameline=<$staf>;
+    my $formatline=<$staf>;
+    my @headers=($line,$skip,$nameheader,$nameline,$formatline);
+    my @parts=$formatline=~/(\s+|\*+(?:\.\*+)?|YYYY[^S]+SS)/g;
+    my $col=0;
+    my @fields=();
+    my $ncol=0;
+    my $offsettypes=$offsettype->{$blkid} || [];
+    foreach my $format (@parts)
+    {
+        if( $format !~ /^\s+$/ )
+        {
+            my $flen=length($format);
+            my $fldid=substr($nameline,$ncol,$flen);
+            my $name=lc($fldid);
+            $name=~ s/^\s+//;
+            $name =~ s/\s+$//;
+            $name=$fieldmap->{$name} if exists $fieldmap->{$name};
+            if( $name =~ /^_[neu]/)
+            {
+                my $offset=$offsettypes->[0] || 'ecc';
+                shift(@$offsettypes) if $name eq '_u';
+                $name=$offset.$name;
+            }
+            push(@fields,
+                {
+                    field=>$name,
+                    id=>$fldid,
+                    col=>$ncol,
+                    length=>$flen,
+                    format=>$format,
+                });
+        }
+        $ncol += length($format);
+    }
+    my $blockdef={
+        id=>$blkid,
+        name=>$blkname,
+        headers=>\@headers,
+        fields=>\@fields,
+    };
+    return $blockdef;
+}
+
+sub _readBlockData
+{
+    my($staf,$blockdef)=@_;
     my @data;
     while (my $line = <$staf> )
     {
         last if $line =~ /^\s*$/;
         my $record={};
-        while (my ($field,$pos)=each %$format)
+        foreach my $fielddef (@{$blockdef->{fields}})
         {
-            my $value=$pos->{col} >= 0 ? substr($line,$pos->{col},$pos->{len}) : '';
-            $value='' if $value eq $pos->{default};
+            my $field=$fielddef->{field};
+            my $col=$fielddef->{col};
+            my $len=$fielddef->{length};
+            
+            my $value=substr($line,$col,$len) ;
             $value =~ s/\s+$//;
             $value =~ s/^\s+//;
             if($field eq 'starttime')
@@ -133,8 +166,50 @@ sub _readData
         }
         push(@data,$record);
     }
+    $blockdef->{data}=\@data;
     return \@data;
 }
+
+
+sub _writeBlockData
+{
+    my($staf,$fields,$data)=@_;
+    my $reclen=0;
+    foreach my $fielddef (@$fields)
+    {
+        my $endcol=$fielddef->{col}+$fielddef->{length};
+        $reclen = $endcol if $endcol > $reclen;
+    }
+    foreach my $d (@$data)
+    {
+        my $line=' 'x$reclen;
+        foreach my $fielddef (@$fields)
+        {
+            my $field=$fielddef->{field};
+            my $col=$fielddef->{col};
+            my $length=$fielddef->{length};
+            my $value=$d->{$field};
+            if( $field eq 'starttime' || $field eq 'endtime')
+            {
+               $value=_writeTime($value);
+               $value=$defaultStartTime if $field eq 'starttime' && $value eq '';
+            }
+            $value=$defaults->{$field} if $value eq '';
+            substr($line,$col,$length)=sprintf("%-*.*s",$length,$length,$value);
+        }
+        $line =~ s/\s*$/\n/;
+        print $staf $line;
+    }
+}
+
+sub _writeBlock
+{
+    my($staf,$blockdef)=@_;
+    print $staf @{$blockdef->{headers}};
+    _writeBlockData($staf,$blockdef->{fields},$blockdef->{data});
+    print $staf "\n";
+}
+
 
 sub _cleanName
 {
@@ -249,7 +324,7 @@ sub _mergeData
     my($self)=@_;
     my @errors=();
     
-    foreach my $blockid (keys %$blockFields )
+    foreach my $blockid ($self->_blockids)
     {
         my $key = $blockid eq '001' ? 'srcname' : 'name';
         my $blockerrors=$self->_mergeBlockData( $blockid, $key );
@@ -257,72 +332,6 @@ sub _mergeData
     }
     @errors=sort @errors;
     return @errors ? \@errors : undef;
-}
-
-sub _writeData
-{
-    my($staf,$format,$data)=@_;
-    my $reclen=0;
-    foreach my $pos (values %$format)
-    {
-        my $endcol=$pos->{col}+$pos->{len};
-        $reclen = $endcol if $endcol > $reclen;
-    }
-    foreach my $d (@$data)
-    {
-        my $line=' 'x$reclen;
-        foreach my $field (keys %$format)
-        {
-            my $pos=$format->{$field};
-            next if $pos->{col} < 0;
-            my $value=$d->{$field};
-            $value=_writeTime($value) if $field eq 'starttime' || $field eq 'endtime';
-            $value='' if $field eq 'endtime' && $value >= $defaultEndTime;
-            $value=$pos->{default} if $value eq '';
-            substr($line,$pos->{col},$pos->{len})=sprintf("%-*.*s",$pos->{len},$pos->{len},$value);
-        }
-        $line =~ s/\s*$/\n/;
-        print $staf $line;
-    }
-}
-
-sub _readBlock
-{
-    my($staf,$header,$blockid)=@_;
-    my $fields=$blockFields->{$blockid};
-    my $format=$fields ? _headerFormat($header,$fields) : undef;
-    my $data;
-    if( $format )
-    {
-        $data=_readData($staf,$format)
-    }
-    else
-    {
-        $data=[];
-        while( my $line = <$staf> )
-        {
-            last if $line =~ /^\s*$/;
-            push(@$data,$line);
-        }
-    
-    }
-    my $block={blockid=>$blockid,header=>$header,format=>$format,data=>$data};
-    return $block;
-}
-
-sub _writeBlock
-{
-    my($staf,$block)=@_;
-    print $staf @{$block->{header}};
-    if( $block->{format} )
-    {
-        _writeData($staf,$block->{format},$block->{data});
-    }
-    else
-    {
-        print $staf @{$block->{data}};
-    }
-    print $staf "\n";
 }
 
 =head2 $sta=new LINZ::BERN::StationFile( $filename )
@@ -333,12 +342,25 @@ Opens and reads a station information file.
 
 sub new
 {
-    my($class,$filename) = @_;
+    my($class,$filename,%options) = @_;
     my $self=bless
     {
         filename=>$filename,
     }, $class;
-    $self->read();
+    if( $options{readformat} )
+    {
+        $self->readFormat();
+    }
+    if( $filename && ! $options{newfile})
+    {
+        $self->read();
+    }
+    else
+    {
+        my $template=_template();
+        open( my $fh, "<", \$template);
+        $self->_readf($fh);
+    }
     return $self;
 }
 
@@ -348,6 +370,57 @@ sub filename
     $self->{filename} = $filename if $filename;
     return $self->{filename};
 }
+
+sub _readf
+{
+    my($self,$fh)=@_;
+    $self->{version}='1.00';
+    $self->{technique}='GNSS';
+    # Read two header lines
+    my $title=<$fh>;
+    chomp($title);
+    my $line=<$fh>;
+    my @headers=();
+    my $blockline='';
+    while($line = <$fh>)
+    {
+        if($line =~ /^FORMAT\s+VERSION\:\s+(\S+)\s*$/)
+        {
+            $self->{version}=$1;
+        } 
+        elsif( $line =~ /^TECHNIQUE\:\s+(\S+)\s*$/ )
+        {
+            $self->{technique}=$1;
+        }
+        elsif( $line =~ /^TYPE\s+\d\d\d\:/)
+        {
+            $blockline=$line;
+            last;
+        }
+        elsif( $line =~ /\S/ )
+        {
+            croak("Invalid line in station information file: ".$line)
+        }
+        push(@headers,$line);
+    }
+    croak("Missing data in station information file") if ! $blockline;
+    my $blocks=[];
+    my $blockidx={};
+    while( 1 )
+    {
+        my $blockdef=_readBlockHeader($fh, $blockline);
+        $blockline='';
+        last if ! defined $blockdef;
+        _readBlockData($fh,$blockdef);
+        push(@$blocks,$blockdef);
+        $blockidx->{$blockdef->{id}}=$blockdef;
+    }
+    $self->{title}=$title;
+    $self->{headers}=\@headers;
+    $self->{blocks}=$blocks;
+    $self->{blockids}=$blockidx;
+}
+
 
 =head2 $sta->read( $filename )
 
@@ -359,36 +432,7 @@ sub read
 {
     my ($self) = @_;
     open(my $staf,"<", $self->filename) || croak("Cannot open station information file ".$self->filename."\n");
-    my @sessdata=();
-    
-    my $title=<$staf>;
-    my $started=0;
-    $self->{title}=$title;
-    my $header=[];
-    my $blocks={};
-    $self->{format}='1.00';
-    $self->{header}=$header;
-    $self->{blocks}=$blocks;
-    while( my $line=<$staf> )
-    {
-        if( $line =~ /^\s*TYPE\s+(\d\d\d)\:.*$/ )
-        {
-            $started=1;
-            my $blockid=$1;
-            my $header=[$line];
-            while( $line=<$staf> )
-            {
-                push(@$header,$line);
-                last if $line =~ /^\*\*\*\*\*\*\*/;
-            }
-            $blocks->{$blockid}=_readBlock($staf,$header,$blockid);
-        }
-        elsif( ! $started )
-        { 
-            $self->{format}=$1 if $line =~ /^FORMAT\S+VERSION\:\s+(\S+)\s*$/;
-            push(@$header,$line);
-        }
-    }
+    $self->_readf($staf);
     close($staf);
 }
 
@@ -401,16 +445,40 @@ the input station information file will be overwritten
 
 sub write
 {
-    my($self,$filename)=@_;
+    my ($self,$filename) = @_;
     $filename ||= $self->{filename};
     open( my $staf, ">", $filename ) || croak("Cannot open output station information file $filename\n");
-    print $staf $self->{title};
-    print $staf @{$self->{header}};
-    foreach my $blockid (sort keys %{$self->{blocks}})
+    my $header="STATION INFORMATION FILE                     "._writeTime(time());
+    my $line=$header;
+    $line =~ s/./-/g;
+    print $staf "$header\n$line\n";
+    print $staf @{$self->{headers}};
+    foreach my $blockdef (@{$self->{blocks}})
     {
-        _writeBlock($staf,$self->{blocks}->{$blockid});
+        _writeBlock($staf,$blockdef);
     }
     close($staf);
+}
+
+sub _blockids
+{
+    my ($self)=@_;
+    my $ids=[];
+    foreach my $blockdef (@{$self->{blocks}})
+    {
+        push(@$ids,$blockdef->{id});
+    }
+    return wantarray ? @$ids : $ids;
+}
+
+sub _getblock
+{
+    my ($self,$blockid)=@_;
+    foreach my $blockdef (@{$self->{blocks}})
+    {
+        return $blockdef if $blockdef->{id} eq $blockid;
+    }
+    return;
 }
 
 sub _blockdata
@@ -444,10 +512,10 @@ sub _blockdata
         @update = sort 
             {$a->{name} cmp $b->{name} || $a->{starttime} <=> $b->{starttime} || $a->{endtime} <=> $b->{endtime}} 
             @update;
-        $self->{blocks}->{$blockid}->{data}=\@update;
+        $self->_getblock($blockid)->{data}=\@update;
     }
 
-    my $blockdata=$self->{blocks}->{$blockid}->{data};
+    my $blockdata=$self->_getblock($blockid)->{data};
     return wantarray ? @$blockdata : $blockdata;
 }
 
@@ -551,7 +619,7 @@ Trims station information to only include data from $startime to $endtime
 sub selectDates
 {
     my($self,$starttime,$endtime)=@_;
-    foreach my $blockid (keys %$blockFields )
+    foreach my $blockid ($self->_blockids)
     {
         my $updated=[];
         foreach my $bd ($self->_blockdata($blockid))
@@ -592,7 +660,7 @@ sub updateNames
         $cleaned{_cleanName($k)}=_cleanName($v);
     }
 
-    foreach my $blockid (keys %$blockFields )
+    foreach my $blockid ($self->_blockids)
     {
         foreach my $bd ($self->_blockdata($blockid))
         {
@@ -638,7 +706,7 @@ sub setRename
             });
     }
     $self->renames(\@update);
-    foreach my $blockid (keys %$blockFields)
+    foreach my $blockid ($self->_blockids)
     {
         next if $blockid eq '001';
         my @bd=$self->_blockdata($blockid);
@@ -647,19 +715,78 @@ sub setRename
     return $self->_mergeData();
 }
 
-=head2 $data=$sta->applyNameMap($data,$mappedonly)
+=head2 $data=$sta->addRename($name,$srcname,$starttime,$endtime,$remark)
+
+Adds a station rename to the type 001 block
+
+=cut
+
+sub addRename
+
+{
+    my($self,$name,$srcname,$starttime,$endtime,$remark)=@_;
+    my $blockdata=$self->_blockdata('001');
+    push(@$blockdata,{
+        name=>$name,
+        srcname=>$srcname,
+        starttime=>$starttime,
+        endtime=>$endtime,
+        remark=>$remark,
+    });
+}
+
+=head2 $sta->mergeRenames()
+
+Simplifies renaming where multiple renames of a source name are provided
+with the same target name.
+
+=cut
+
+sub  mergeRenames
+{
+    my($self)=@_;
+    my $renameblock=$self->_getblock('001');
+    my $blockdata=$renameblock->{data};
+    my @rawdata = sort {$a->{srcname} cmp $b->{srcname} || $a->{starttime} <=> $b->{starttime}}  @$blockdata;
+    my @merged=();
+    my $last=undef;
+    foreach my $rename (@rawdata)
+    {
+        if( $last && $last->{srcname} eq $rename->{srcname} && $last->{name} eq $rename->{name} )
+        {
+            if( $last->{endtime} && (! $rename->{endtime} || $rename->{endtime} > $last->{endtime}))
+            {
+                $last->{endtime} = $rename->{endtime};
+            }
+        }
+        else
+        {
+            push(@merged,$rename);
+            $last=$rename;
+        }
+    }
+    $renameblock->{data}=\@merged;
+}
+
+=head2 $data=$sta->applyNameMap($data,mappedonly=0/1,addnames=>0/1)
 
 Applies name mapping to data.  The data is assumed to be an array of dictionaries with
 fields name, starttime, endtime.  The name map is applied, potentially splitting 
 date ranges, or removing data where no mapping is defined in the source data.
 
-If $mappedonly is true then only mapped names are copied.
+If mappedonly is true then only mapped names are copied.
+If addnames is true then unmapped names are added to the name list
+
+Where names are added and the name looks like a station code (4 alphanumerics followd by a 
+blank) then original station name is set to the code followed by '*'.
 
 =cut
 
 sub applyNameMap
 {
-    my($self,$data,$mappedonly)=@_;
+    my($self,$data,%options)=@_;
+    my $mappedonly=$options{mappedonly};
+    my $addnames=$options{addnames};
     my $renames=$self->renames;
     my @mapped=();
     my @torename=@$data;
@@ -704,7 +831,12 @@ sub applyNameMap
             $used=1;
             last;
         }
-        push(@mapped,_copy($d)) if ! $used && ! $mappedonly;
+        push(@mapped,_copy($d)) if ! $used && (! $mappedonly || $addnames);
+        if( $addnames && ! $used )
+        {
+            my $srcname=$name =~ /^\w{4}(\s|$)/ ? substr($name,0,4).'*' : $name;
+            $self->addRename($name,$srcname,$starttime,$endtime,"From site log");
+        }
     }
     return \@mapped;
 }
@@ -754,7 +886,7 @@ none.
 sub merge
 {
     my($self,$other)=@_;
-    foreach my $blockid (keys %$blockFields)
+    foreach my $blockid ($self->_blockids)
     {
         my $bd=$self->_blockdata($blockid);
         my $od=$other->_blockdata($blockid);
@@ -793,7 +925,6 @@ associated by default with the name taken from the four character
 code and domes number.  This can be overridden using the name option
 
 Names are mapped using the data from block 1 of the station information
-file.
 
 Existing station information for the name will be replaced.
 
@@ -811,6 +942,10 @@ mapped using the block 1 name remapping.
 Specifies whether the station information data is updated, or the function returns
 the updates, but doesn't actually apply them.
 
+=item addnames=>$addnames
+
+If true then names are added to the type 001 block if nothing there matches them.  
+
 =back
 
 =cut
@@ -820,12 +955,14 @@ sub loadIGSSiteLog
     my($self,$sitelog,%options)=@_;
     my $name=$options{name};
     my $doupdate=exists $options{update} ? $options{update} : 1;
+    my $addnames=$options{addnames};
     if( ! $name )
     {
         $name=$sitelog->code;
         my $domes=$sitelog->domesNumber;
         $name .= ' '.$domes if $domes;
     }
+    $name=_cleanName($name);
 
     # Compile a list of events from the site log, IA,DA (antenna installed, removed)
     # IR,DR (receiver installed, removed), and sort by date
@@ -958,7 +1095,7 @@ sub loadIGSSiteLog
 
     # Apply name mapping to the information
     
-    my $mapped=$self->applyNameMap(\@stationinfo,1);
+    my $mapped=$self->applyNameMap(\@stationinfo,mappedonly=>1,addnames=>$addnames);
 
     # Now replace the information in the data...
     
@@ -966,3 +1103,49 @@ sub loadIGSSiteLog
 
     return wantarray ? @$mapped : $mapped;
 }
+
+sub _template
+{
+return <<EOD;
+STATION INFORMATION FILE                                         20-AUG-19 15:06
+--------------------------------------------------------------------------------
+
+FORMAT VERSION: 1.01
+TECHNIQUE:      GNSS
+
+TYPE 001: RENAMING OF STATIONS
+------------------------------
+
+STATION NAME          FLG          FROM                   TO         OLD STATION NAME      REMARK
+****************      ***  YYYY MM DD HH MM SS  YYYY MM DD HH MM SS  ********************  ************************
+
+
+TYPE 002: STATION INFORMATION
+-----------------------------
+
+STATION NAME          FLG          FROM                   TO         RECEIVER TYPE         RECEIVER SERIAL NBR   REC #   ANTENNA TYPE          ANTENNA SERIAL NBR    ANT #    NORTH      EAST      UP      DESCRIPTION             REMARK
+****************      ***  YYYY MM DD HH MM SS  YYYY MM DD HH MM SS  ********************  ********************  ******  ********************  ********************  ******  ***.****  ***.****  ***.****  **********************  ************************
+
+TYPE 003: HANDLING OF STATION PROBLEMS
+--------------------------------------
+
+STATION NAME          FLG          FROM                   TO         REMARK
+****************      ***  YYYY MM DD HH MM SS  YYYY MM DD HH MM SS  ************************************************************
+
+TYPE 004: STATION COORDINATES AND VELOCITIES (ADDNEQ)
+-----------------------------------------------------
+                                            RELATIVE CONSTR. POSITION     RELATIVE CONSTR. VELOCITY
+STATION NAME 1        STATION NAME 2        NORTH     EAST      UP        NORTH     EAST      UP
+****************      ****************      **.*****  **.*****  **.*****  **.*****  **.*****  **.*****
+
+TYPE 005: HANDLING STATION TYPES
+--------------------------------
+
+STATION NAME          FLG  FROM                 TO                   MARKER TYPE           REMARK
+****************      ***  YYYY MM DD HH MM SS  YYYY MM DD HH MM SS  ********************  ************************
+
+EOD
+}
+
+1;
+

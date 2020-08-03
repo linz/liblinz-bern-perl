@@ -44,8 +44,6 @@ Also provides programs:
 
 =item igslog_to_sta
 
-=item
-
 =back
 
 The routines for creating runtime environments and running PCF scripts allow redirecting

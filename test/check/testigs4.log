@@ -1,0 +1,8 @@
+Processing sitelogs/geonet/bluf_20150823.xml
+Site log for BLUF 50234M001 ignored as outside coordinate tolerance (offset 20.2 > 10.0)
+No updates taken from sitelogs/geonet/bluf_20150823.xml - names not matched
+Processing sitelogs/igs/coso_20140707.log
+Site log for COSO 40469M001 ignored as not in coordinate file
+No updates taken from sitelogs/igs/coso_20140707.log - names not matched
+Processing sitelogs/igs/zimm_20151216.log
+Created output/TESTIGS4.STA

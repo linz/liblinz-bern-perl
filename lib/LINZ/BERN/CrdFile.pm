@@ -102,6 +102,44 @@ sub station
     return $self->{index}->{$name};
 }
 
+sub resetCodeIndex
+{
+    my($self)=@_;
+    undef $self->{codeindex};
+}
+
+sub _codeIndex
+{
+    my($self)=@_;
+    if( ! $self->{codeindex} )
+    {
+        my %codes=();
+        foreach my $stn ($self->stations)
+        {
+            my $code=uc($stn->{code});
+            if( $code )
+            {
+                if( ! exists $codes{$code} )
+                {
+                    $codes{$code}=$stn;
+                }
+                else
+                {
+                    $codes{$code}=0;
+                }
+            }
+        }
+        $self->{codeindex}=\%codes;
+    }
+    return $self->{codeindex};
+}
+
+sub stationFromCode
+{
+    my($self,$code)=@_;
+    return $self->_codeIndex->{uc($code)};
+}
+
 sub add
 {
     my($self,@stndata) = @_;
@@ -187,6 +225,7 @@ sub read
         }
         $self->add($name,$code,$xyz,$flag);
     }
+    $self->resetCodeIndex();
 }
 
 
@@ -237,6 +276,7 @@ sub readAbbreviations
         }
     }
     close($abbf);
+    $self->resetCodeIndex();
 }
 
 sub createAbbreviations
@@ -248,6 +288,7 @@ sub createAbbreviations
     my %scodes=();
     my @bcodes=();
 
+    $self->resetCodeIndex();
     foreach my $s (@{$self->stations})
     {
         my $code=$s->code;

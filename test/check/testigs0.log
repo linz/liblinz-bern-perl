@@ -1,0 +1,93 @@
+Name
+    igslog_to_sta - Update Bernese station information from IGS site log
+
+Synopsis
+        igslog_to_sta [options] igslogfile ...  input_sta output_sta
+        igslog_to_sta [options] [-p logfilepattern logdir ...] input_sta output_sta
+        igslog_to_sta [options] [-C crdfile] [-p logfilepattern logdir ...] output_sta 
+        igslog_to_sta -h
+
+Description
+    Extract station information from one or more IGS site log files and
+    update the station information section (block 2) of a Bernese station
+    information file (.STA).
+
+    If a logfilepattern is specified then it can include replacement strings
+    {code} for station code and {yyyy} {mm} {dd} {ddd} for year, month, day
+    of month, and day of year. Where more than one file is found for a
+    station, the most recent one based on the filename date will be used,
+    otherwise the file sorting last alphabetically will be used. The search
+    for log files will include the specified directory and all child
+    directories. Once a log file matching a name is found then only files in
+    that directory will be considered for that code. Multiple search
+    directories can be specified either separated by ':' or as individual
+    command line parameters.
+
+    (Note that the code is used only for file selection - the station code
+    for matching the station information file names comes from the contents
+    of the log file. However see the -m option).
+
+    Station names are matched either using the four character code, possibly
+    combined with the DOMES number, or the full name from the site log. The
+    names are matched using the station renaming specified in the station
+    information file.
+
+    A Bernese coordinate file can be specified, in which case the program
+    will test the approximate coordinate in the site log against that in the
+    coordinate file to confirm the match. Stations which are outside a
+    tolerance or not in the coordinate file will be ignored.
+
+    If the -u option is specified then only stations in the coordinate file
+    are updated, otherwise all stations in the original file are updated. If
+    an output coordinate file is specified then the output will be written
+    to that.
+
+Options
+    Valid options are:
+
+    -p filepattern
+        Defines a pattern for the filename. Can include {code} for a station
+        code, {yyyy}, {mm}, {dd}, or {ddd} for date components. Also ? and *
+        for a single character or arbitrary number of c characters. Results
+        in a recursive search of the directory for log files as described
+        above.
+
+        When this parameter is used the script expects log directories
+        rather than log files on the command line.
+
+        Generally this will be used with the -m option.
+
+    -P  Use default pattern {code}_{yyyy}{mm}{dd}.(xml|log)
+
+    -n  Specify that the site log stations will be linked with the .STA
+        stations based on the name.
+
+    -d  Specify that the name will be compiled from the four character code
+        and DOMES number (or just the four character code if the DOMES
+        number is blank).
+
+    -m  Match codes with the filename. Assumes the {code} pattern in the
+        filename matches the four character id, and only uses the file if
+        this is identifiable in the station naming section (001) of the STA
+        file.
+
+    -c crdfile
+        Specify the name of a Bernese .CRD file to use for confirming the
+        IGS station name match based on the coordinate.
+
+    -C crdfile
+        Similar to -c except that there is no input station information file
+        - it is created directly from the log files.
+
+    -a  Specify that logs matching any station code from the coordinate file
+        will be added even if they are not already in the station
+        information file.
+
+    -t tolerance
+        Specify the tolerance in metres used to confirm the name match. The
+        default is 10 metres.
+
+    -v  Verbose mode
+
+    -h  Prints help and exits
+

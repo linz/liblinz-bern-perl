@@ -1,3 +1,9 @@
+liblinz-bern-perl (1.32.0-1) bionic; urgency=medium
+
+  * Adding support for adding stations to station information file
+
+ -- Chris Crook <ccrook@linz.govt.nz>  Mon, 2 Aug 2020 12:00:00 +1200
+
 liblinz-bern-perl (1.31.0-1) bionic; urgency=medium
 
   * Adding environment variable BERNESE_SERVER_HOST to support 
