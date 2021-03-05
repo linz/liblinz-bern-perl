@@ -52,7 +52,8 @@ these are maintained separately to the processing docker image.  These locations
 defined with environment variables BERNESE_GENDIR and BERNESE_DATAPOOL, or they can be 
 explicitly defined in functions seach as BernUtil::CreateRuntimeEnvironment.  The BERNESE_SERVER_HOST
 environment variable can be used to override the value in LOADGPS.setvar (typically `localhost`).
-BERNESE_DEBUG can be set to "debug" to use the debug versions of programs (F_VERS=GNUc)
+BERNESE_DEBUG can be set to "debug" to use the debug versions of programs (F_VERS=GNUc).
+The BERNESE_ENV_FILE variable can be used to override the default location of LOADGPS.setvar
 
 =cut
 
