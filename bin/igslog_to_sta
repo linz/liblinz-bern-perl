@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/bin/perl 
 
 use strict;
 
@@ -128,7 +128,7 @@ foreach my $logfile (@logfiles)
     {
         $name=$sitelog->name;
     }
-    my $updates=$sta->loadIGSSiteLog($sitelog,name=>$name,update=>1,addnames=>$addstn);
+    my $updates=$sta->loadIGSSiteLog($sitelog,name=>$name,update=>0,addnames=>$addstn);
     if( $crds )
     {
         my %names=();
