@@ -122,7 +122,10 @@ foreach my $logfile (@logfiles)
     {
         $name=$code;
         my $domes=$sitelog->domesNumber;
-        $name .= ' '.$domes if $domes ne '';
+        if( $domes ne '' && lc($domes) ne 'none' )
+        {
+            $name .= ' '.$domes;
+        }
     }
     elsif( $usename )
     {
