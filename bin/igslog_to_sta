@@ -96,16 +96,16 @@ if( $logfilere ne '')
                             }
                             return if ! $rename;
                         }
-                        # Pick the most recent log for a code in this directory
-                        if( ! exists $codedir->{$code}->{$filedir} )
-                        {
-                            $dircount->{$code}++;
-                            $codedir->{$code}->{$filedir}=$dircount->{$code};
-                        }
-                        my $ndir=$codedir->{$code}->{$filedir};
-                        my $sortid=$+{yyyy}.$+{mm}.$+{dd}.$+{doy}.$filename;
-                        my $lastid=$codes->{$code}->[$ndir]->[1];
-                        $codes->{$code}->[$ndir]=[$filepath,$sortid] if $lastid eq '' || $lastid lt $sortid;
+                            # Pick the most recent log for a code in this directory
+                            if( ! exists $codedir->{$code}->{$filedir} )
+                            {
+                                $dircount->{$code}++;
+                                $codedir->{$code}->{$filedir}=$dircount->{$code};
+                            }
+                            my $ndir=$codedir->{$code}->{$filedir};
+                            my $sortid=$+{yyyy}.$+{mm}.$+{dd}.$+{doy}.$filename;
+                            my $lastid=$codes->{$code}->[$ndir]->[1];
+                            $codes->{$code}->[$ndir]=[$filepath,$sortid] if $lastid eq '' || $lastid lt $sortid;
                     }
                     elsif( ! $usenamecode ) 
                     {
@@ -142,7 +142,10 @@ foreach my $logfileset (@logfilesets)
         {
             $name=$code;
             my $domes=$sitelog->domesNumber;
-            $name .= ' '.$domes if $domes ne '';
+            if( $domes ne '' && lc($domes) ne 'none' )
+            {
+                $name .= ' '.$domes;
+            }
         }
         elsif( $usename )
         {
@@ -195,7 +198,7 @@ foreach my $logfileset (@logfilesets)
             print "No updates taken from $logfile - names not matched\n" if $verbose;
             next;
         }
-        $used=1;
+            $used=1;
         $sta->stationinfo($updates,1);
     }
 }
@@ -222,7 +225,6 @@ sub testStationLocation
     my ($sitelog,$crds,$tolerance) = @_;
 
 }
-
 sub help
 {
     my ($brief)=@_;
