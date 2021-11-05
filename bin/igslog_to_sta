@@ -41,6 +41,14 @@ if( $crdfile )
     $crds=new LINZ::BERN::CrdFile($crdfile);
 }
 
+# Compile logfile sets, each a list of candidate log files for a station.  The sets
+# are lists of log files grouped by code (from the file name).  Each set holds the
+# most recent entry from each directory in which the code is found. 
+# Use this approach to handle codes being reused in different source data sets (assumed to be different 
+# directories)).  Each set is a pair [logfilename,sortid] where the sortid is used to ensure we pick
+# the most recent file in each directory.
+
+my @logfilesets=();
 if( $logfilere ne '')
 {
     croak "Cannot specify more than one IGS log directory with -p option" if @logfiles > 1;
@@ -61,121 +69,135 @@ if( $logfilere ne '')
         $re .= $r;
     }
     $re .= '$';
-    my %codes=();
-    @logfiles=();
-    my %namedir=();
+    my $codes=();
+    my $codedir;
+    my $dircount;
     my @logdirs=split(/\:/,$logdir);
     foreach my $dir (@logdirs )
     {
-        find(sub {
-                my $filename=$_;
-                my $filepath=$File::Find::name;
-                my $filedir=$File::Find::dir;
-                return if $filename !~ /$re/;
-                my $code=uc($+{code});
-                return if $namedir{$code} && $namedir{$code} ne $filedir;
-                $namedir{$code} = $filedir;
-                if( $code )
+        find({
+            preprocess=>sort,
+            wanted=>sub 
                 {
-                    # If using name codes then check that the code is defined in the .STA file.
-                    if( $usenamecode )
+                    my $filename=$_;
+                    my $filepath=$File::Find::name;
+                    my $filedir=$File::Find::dir;
+                    return if $filename !~ /$re/;
+                    my $code=uc($+{code});
+                    if( $code )
                     {
-                        my $rename=$sta->matchName($code);
-                        if( ! $rename && $addstn && $crds )
+                        # If using name codes then check that the code is defined in the .STA file.
+                        if( $usenamecode )
                         {
-                            $rename=1 if $crds->stationFromCode($code);
+                            my $rename=$sta->matchName($code);
+                            if( ! $rename && $addstn && $crds )
+                            {
+                                $rename=1 if $crds->stationFromCode($code);
+                            }
+                            return if ! $rename;
                         }
-                        return if ! $rename;
+                        # Pick the most recent log for a code in this directory
+                        if( ! exists $codedir->{$code}->{$filedir} )
+                        {
+                            $dircount->{$code}++;
+                            $codedir->{$code}->{$filedir}=$dircount->{$code};
+                        }
+                        my $ndir=$codedir->{$code}->{$filedir};
+                        my $sortid=$+{yyyy}.$+{mm}.$+{dd}.$+{doy}.$filename;
+                        my $lastid=$codes->{$code}->[$ndir]->[1];
+                        $codes->{$code}->[$ndir]=[$filepath,$sortid] if $lastid eq '' || $lastid lt $sortid;
                     }
-                    my $sort=$+{yyyy}.$+{mm}.$+{dd}.$+{doy}.$filename;
-                    # Pick the most recent log for a code
-                    $codes{$code}=[$filepath,$sort] if ! exists $codes{$code} || $codes{$code}->[1] lt $sort;
+                    elsif( ! $usenamecode ) 
+                    {
+                        push(@logfiles,$filepath);
+                    }
                 }
-                elsif( ! $usenamecode ) 
-                {
-                    push(@logfiles,$filepath);
-                }
-            }, $dir );
+            }, 
+            $dir );
     }
-    foreach my $code (keys %codes)
-    {
-        my $logs=$codes{$code};
-        push(@logfiles,$logs->[0]); 
-    }
+    @logfilesets=values %$codes;
 }
 else
 {
     foreach my $f (@logfiles)
     {
         croak("Log file $f does not exist\n") if ! -r $f;
+        push(@logfilesets,[[$f,'']]);
     }
 }
 @logfiles=sort(@logfiles);
 
-foreach my $logfile (@logfiles)
+foreach my $logfileset (@logfilesets)
 {
-    print "Processing $logfile\n" if $verbose;
-    my $sitelog=new LINZ::GNSS::IGSSiteLog($logfile);
-    my $code=$sitelog->code;
-    my $name=$code;
-    if( $usedomes )
+    my $used=0;
+    foreach my $logfilep (@$logfileset)
     {
-        $name=$code;
-        my $domes=$sitelog->domesNumber;
-        $name .= ' '.$domes if $domes ne '';
-    }
-    elsif( $usename )
-    {
-        $name=$sitelog->name;
-    }
-    my $updates=$sta->loadIGSSiteLog($sitelog,name=>$name,update=>0,addnames=>$addstn);
-    if( $crds )
-    {
-        my %names=();
-        foreach my $d (@$updates)
+        last if $used;
+        my $logfile=$logfilep->[0];
+        print "Processing $logfile\n" if $verbose;
+        my $sitelog=new LINZ::GNSS::IGSSiteLog($logfile);
+        my $code=$sitelog->code;
+        my $name=$code;
+        if( $usedomes )
         {
-            $names{$d->{name}}=1;
+            $name=$code;
+            my $domes=$sitelog->domesNumber;
+            $name .= ' '.$domes if $domes ne '';
         }
-        my %remove=();
-        my $xyz=$sitelog->approxXYZ;
-        foreach my $name (keys %names)
+        elsif( $usename )
         {
-            my $stn=$crds->station($name);
-            $stn=$crds->stationFromCode($code) if ! $stn;
-            if( ! $stn )
-            {
-                $remove{$name}=1;
-                print "Site log for $name ignored as not in coordinate file\n" if $verbose;
-                next;
-            }
-            my $testxyz=$stn->xyz;
-            my $offset=sqrt(
-                ($xyz->[0]-$testxyz->[0])**2+
-                ($xyz->[1]-$testxyz->[1])**2+
-                ($xyz->[2]-$testxyz->[2])**2);
-            if( $offset > $crdtol )
-            {
-                $remove{$name}=1;
-                printf "Site log for $name ignored as outside coordinate tolerance (offset %.1f > %.1f)\n",$offset,$crdtol 
-                    if $verbose;
-            }
+            $name=$sitelog->name;
         }
-        if( %remove )
+        my $updates=$sta->loadIGSSiteLog($sitelog,name=>$name,update=>0,addnames=>$addstn);
+        if( $crds )
         {
-            my @using=();
+            my %names=();
             foreach my $d (@$updates)
             {
-                push(@using,$d) if ! $remove{$d->{name}};
+                $names{$d->{name}}=1;
             }
-            $updates=\@using;
+            my %remove=();
+            my $xyz=$sitelog->approxXYZ;
+            foreach my $name (keys %names)
+            {
+                my $stn=$crds->station($name);
+                $stn=$crds->stationFromCode($code) if ! $stn;
+                if( ! $stn )
+                {
+                    $remove{$name}=1;
+                    print "Site log for $name ignored as not in coordinate file\n" if $verbose;
+                    next;
+                }
+                my $testxyz=$stn->xyz;
+                my $offset=sqrt(
+                    ($xyz->[0]-$testxyz->[0])**2+
+                    ($xyz->[1]-$testxyz->[1])**2+
+                    ($xyz->[2]-$testxyz->[2])**2);
+                if( $offset > $crdtol )
+                {
+                    $remove{$name}=1;
+                    printf "Site log for $name ignored as outside coordinate tolerance (offset %.1f > %.1f)\n",$offset,$crdtol 
+                        if $verbose;
+                }
+            }
+            if( %remove )
+            {
+                my @using=();
+                foreach my $d (@$updates)
+                {
+                    push(@using,$d) if ! $remove{$d->{name}};
+                }
+                $updates=\@using;
+            }
         }
+        if( scalar(@$updates) < 1 )
+        {
+            print "No updates taken from $logfile - names not matched\n" if $verbose;
+            next;
+        }
+        $used=1;
+        $sta->stationinfo($updates,1);
     }
-    if( scalar(@$updates) < 1 )
-    {
-        print "No updates taken from $logfile - names not matched\n" if $verbose;
-        next;
-    }
-    $sta->stationinfo($updates,1);
 }
 
 $sta->mergeRenames() if $addstn;
@@ -193,6 +215,12 @@ if( $@ )
     my $error=$@;
     unlink($tmpfile);
     print $error;
+}
+
+sub testStationLocation
+{
+    my ($sitelog,$crds,$tolerance) = @_;
+
 }
 
 sub help
@@ -233,9 +261,10 @@ file is found for a station, the most recent one based on the filename
 date will be used, otherwise the file sorting last alphabetically will
 be used.  The search for log files will include the specified 
 directory and all child directories. Once a log file matching a 
-name is found then only files in that directory will be considered 
-for that code.  Multiple search directories can be specified
-either separated by ':' or as individual command line parameters.
+name (and optionally coordinate) is found then only files in that 
+directory will be considered for that code.  Multiple search di
+rectories can be specified either separated by ':' or as individual 
+command line parameters.
 
 (Note that the code is used 
 only for file selection - the station code for matching the station
