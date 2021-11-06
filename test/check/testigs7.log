@@ -1,9 +1,14 @@
 Processing sitelogs/igs/bluf_20160128.log
 Site log for BLUF 50234M001 ignored as outside coordinate tolerance (offset 20.2 > 10.0)
-No updates taken from sitelogs/igs/bluf_20160128.log - names not matched
+No updates taken from sitelogs/igs/bluf_20160128.log - names or coordinates not matched
+Processing sitelogs/geonet/bluf_20150823.xml
+Site log for BLUF 50234M001 ignored as outside coordinate tolerance (offset 20.2 > 10.0)
+No updates taken from sitelogs/geonet/bluf_20150823.xml - names or coordinates not matched
 Processing sitelogs/igs/corm_20160128.log
+Applying updates from sitelogs/igs/corm_20160128.log
 Processing sitelogs/igs/coso_20140707.log
 Site log for CHINA LAKE ignored as not in coordinate file
-No updates taken from sitelogs/igs/coso_20140707.log - names not matched
+No updates taken from sitelogs/igs/coso_20140707.log - names or coordinates not matched
 Processing sitelogs/igs/zimm_20151216.log
+Applying updates from sitelogs/igs/zimm_20151216.log
 Created output/TESTIGS7.STA

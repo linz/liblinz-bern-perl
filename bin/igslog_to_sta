@@ -76,7 +76,6 @@ if( $logfilere ne '')
     foreach my $dir (@logdirs )
     {
         find({
-            preprocess=>sort,
             wanted=>sub 
                 {
                     my $filename=$_;
@@ -99,8 +98,8 @@ if( $logfilere ne '')
                             # Pick the most recent log for a code in this directory
                             if( ! exists $codedir->{$code}->{$filedir} )
                             {
+                                $codedir->{$code}->{$filedir}=($dircount->{$code}+0);
                                 $dircount->{$code}++;
-                                $codedir->{$code}->{$filedir}=$dircount->{$code};
                             }
                             my $ndir=$codedir->{$code}->{$filedir};
                             my $sortid=$+{yyyy}.$+{mm}.$+{dd}.$+{doy}.$filename;
@@ -111,21 +110,21 @@ if( $logfilere ne '')
                     {
                         push(@logfiles,$filepath);
                     }
-                }
+                },
+            preprocess=>sort,
             }, 
             $dir );
     }
-    @logfilesets=values %$codes;
+    @logfilesets=map {$codes->{$_}} sort keys %$codes;
 }
 else
 {
-    foreach my $f (@logfiles)
+    foreach my $f (sort @logfiles)
     {
         croak("Log file $f does not exist\n") if ! -r $f;
         push(@logfilesets,[[$f,'']]);
     }
 }
-@logfiles=sort(@logfiles);
 
 foreach my $logfileset (@logfilesets)
 {
@@ -152,6 +151,7 @@ foreach my $logfileset (@logfilesets)
             $name=$sitelog->name;
         }
         my $updates=$sta->loadIGSSiteLog($sitelog,name=>$name,update=>0,addnames=>$addstn);
+        my %remove=();
         if( $crds )
         {
             my %names=();
@@ -159,7 +159,6 @@ foreach my $logfileset (@logfilesets)
             {
                 $names{$d->{name}}=1;
             }
-            my %remove=();
             my $xyz=$sitelog->approxXYZ;
             foreach my $name (keys %names)
             {
@@ -181,6 +180,7 @@ foreach my $logfileset (@logfilesets)
                     $remove{$name}=1;
                     printf "Site log for $name ignored as outside coordinate tolerance (offset %.1f > %.1f)\n",$offset,$crdtol 
                         if $verbose;
+                    next;
                 }
             }
             if( %remove )
@@ -195,10 +195,11 @@ foreach my $logfileset (@logfilesets)
         }
         if( scalar(@$updates) < 1 )
         {
-            print "No updates taken from $logfile - names not matched\n" if $verbose;
+            print "No updates taken from $logfile - names or coordinates not matched\n" if $verbose;
             next;
         }
-            $used=1;
+        print "Applying updates from $logfile\n" if $verbose;
+        $used=1;
         $sta->stationinfo($updates,1);
     }
 }
