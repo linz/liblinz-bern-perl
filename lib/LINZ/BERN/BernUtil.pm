@@ -37,6 +37,7 @@ use Carp;
 use JSON::PP;
 
 our $LoadGpsEnvVar = 'BERNESE_ENV_FILE';
+our $BerneseTimeoutVar = 'BERNESE_BPE_TIMEOUT';
 our $DefaultLoadGps = '/opt/bernese52/GPS/EXE/LOADGPS.setvar';
 our $AntennaFile    = 'PCV_COD.I08';
 our $ReceiverFile   = 'RECEIVER.';
@@ -560,6 +561,11 @@ sub CreateRuntimeEnvironment {
         print $svf "# PositioNZ-PP Bernese client settings\n";
         foreach my $key ( sort keys %$bernenv ) {
             printf $svf "export %s=\"%s\"\n", $key, $bernenv->{$key};
+        }
+        my $timeout=$ENV{$LINZ::BERN::BernUtil::BerneseTimeoutVar};
+        if( $timeout )
+        {
+            print $svf "export TIMEOUT=\"$timeout\"\n";
         }
         close($svf);
     };

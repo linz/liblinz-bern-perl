@@ -54,6 +54,7 @@ explicitly defined in functions seach as BernUtil::CreateRuntimeEnvironment.  Th
 environment variable can be used to override the value in LOADGPS.setvar (typically `localhost`).
 BERNESE_DEBUG can be set to "debug" to use the debug versions of programs (F_VERS=GNUc).
 The BERNESE_ENV_FILE variable can be used to override the default location of LOADGPS.setvar
+The BERNESE_BPE_TIMEOUT variable can define a timeout for Bernese menu programs.
 
 =cut
 
