@@ -3,10 +3,13 @@
 use strict;
 
 use Getopt::Std;
+use JSON;
+use LWP::UserAgent;
+
 use LINZ::GNSS::Time qw/parse_gnss_date seconds_decimal_year/;
 use LINZ::GDB qw/SetGdbOptions GetGdbMark/;
-use LINZ::Geodetic::CoordSysList qw/GetCoordSys/;
 use LINZ::BERN::CrdFile;
+use LINZ::Geodetic::CoordSysList qw/GetCoordSys/;
 
 my %opts;
 getopts('vVoucvhi:f:n:m:d:r:',\%opts);
@@ -49,11 +52,50 @@ if( $@ )
 
 # Load the coordinate systems
 
-my $csnzgd2000=GetCoordSys('NZGD2000');
-die " Cannot load NZGD2000 coordinate system\n" if ! $csnzgd2000;
-my $csitrf=GetCoordSys($crdsys);
-die " Cannot load $crdsys coordinate system\n" if ! $csitrf;
-$csitrf=$csitrf->asxyz();
+my $crdapiurl=$ENV{COORDINATE_CONVERSION_API_URL};
+my $nzgd2000_to_itrfxyz;
+
+if( $crdapiurl )
+{
+    my $csnzgd2000="LINZ:NZGD2000";
+    my $csitrf="LINZ:${crdsys}_XYZ";
+    my $apiurl="$crdapiurl/convert-to?crs=$csitrf";
+    $nzgd2000_to_itrfxyz=sub {
+        my ($llh, $year)=@_;
+        my $data={
+            "crs" => $csnzgd2000,
+            "coordinateEpoch" => $year,
+            "coordinateOrder" => ['east','north','up'],
+            "coordinates" => [$llh]
+        };
+        my $json=JSON->new;
+        my $ua=LWP::UserAgent->new(timeout=>30);
+        my $response=$ua->post($apiurl,Content=>$json->encode($data),"Content-Type"=>"application/json");
+        my $xyz;
+        if( $response->is_success )
+        {
+            my $result=$json->decode($response->decoded_content);
+            $xyz=$result->{coordinateList}->{coordinates}->[0] if $result->{status} eq 'success';
+        }
+        return $xyz;
+    }
+}
+else
+{
+    my $csnzgd2000=GetCoordSys('NZGD2000');
+    die " Cannot load NZGD2000 coordinate system\n" if ! $csnzgd2000;
+    my $csitrf=GetCoordSys($crdsys);
+    die " Cannot load $crdsys coordinate system\n" if ! $csitrf;
+    $csitrf=$csitrf->asxyz();
+    $nzgd2000_to_itrfxyz=sub {
+        my ($llh, $year)=@_;
+        my $crd=$csnzgd2000->coord($llh->[1],$llh->[0],$llh->[2]);
+        $crd->setepoch($year);
+        my $xyz=$crd->as($csitrf);
+        return [$xyz->[0],$xyz->[1],$xyz->[2]];
+
+    }
+}
 
 my $crd=new LINZ::BERN::CrdFile($crdin );
 
@@ -64,6 +106,7 @@ my $nupd=0;
 my $nskip=0;
 
 SetGdbOptions(useCache=>1);
+
 
 sub MarkData
 {
@@ -93,10 +136,8 @@ sub MarkData
         return undef;
     }
     my $llh=$markdata->{coordinate};
-    my $crd=$csnzgd2000->coord($llh->{latitude},$llh->{longitude},$llh->{height} || 0.0);
-    $crd->setepoch($year);
-    my $xyz=$crd->as($csitrf);
-    $markdata->{xyz}=[$xyz->[0],$xyz->[1],$xyz->[2]];
+    my $crd=[$llh->{longitude},$llh->{latitude},$llh->{height} || 0.0];
+    $markdata->{xyz}=$nzgd2000_to_itrfxyz->($crd,$year);
     return $markdata;
 }
 
@@ -111,6 +152,7 @@ eval
         next if ! $markdata;
         $nngeo--;
         my $xyz=$markdata->{xyz};
+        next if ! $xyz;
         my $xyz0=$stn->xyz();
         my $offset=($xyz->[0]-$xyz0->[0])**2+($xyz->[1]-$xyz0->[1])**2+($xyz->[2]-$xyz0->[2])**2;
         $offset=sqrt($offset);
