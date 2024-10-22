@@ -146,6 +146,7 @@ eval
     foreach my $stn ($crd->stations())
     {
         my $code=uc($stn->code);
+        print(" Processing $code\n") if $verbose > 1;
         next if ! $usecode{$code} && ! $update;
         $nngeo++;
         my $markdata=MarkData($code,'updating');
@@ -202,13 +203,13 @@ eval
     if( $verbose )
     {
         print "\n" if $verbose > 1;
-        print " $nnew stations added\n" if $nnew;
+        print " $nnew stations added\n" if $nnew || $verbose > 1;
         printf " %d stations updated - max coordinate difference %.4fm\n",
-            $nupd,$maxoffset if $nupd;
+            $nupd,$maxoffset if $nupd || $verbose > 1;
         printf " %d stations not updated as offset larger than %.4fm\n",
-            $nskip,$maxdiff if $nskip;
+            $nskip,$maxdiff if $nskip && $maxdiff > 0;
         printf " %d stations not processed as not NZGD2000 GDB marks or GDB not available\n",
-            $nngeo if $nngeo;
+            $nngeo if $nngeo || $verbose > 1;
         print " No stations added or updated\n" if ! ($nnew || $nupd);
     }
 };
