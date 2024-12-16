@@ -205,7 +205,7 @@ sub read
         $name=~ s/^\s+//;
         $name=~ s/\s+$//;
         my $code;
-        if( $name=~/^(\w{4})(?:\s|$)/ )
+        if( $name=~/^(\w{4})(?:00NZL)?(?:\s|$)/ )
         {
             $code=uc($1);
         }
