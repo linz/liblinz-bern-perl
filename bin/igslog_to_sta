@@ -59,7 +59,7 @@ if( $logfilere ne '')
     {
         my $r = $p eq '*'      ? '.*' :
              $p eq '?'      ? '.' :
-             $p eq '{code}' ? '(?<code>\w\w\w\w)' :
+             $p eq '{code}' ? '(?<code>\w\w\w\w)(?:\w{5})?' :
              $p eq '{yyyy}' ? '(?<year>(?:19|20)\d\d)' :
              $p eq '{mm}'   ? '(?<month>(?:0[1-9]|10|11|12))' :
              $p eq '{dd}'   ? '(?<day>(?:0[1-9]|[12]\d|30|31))' :
