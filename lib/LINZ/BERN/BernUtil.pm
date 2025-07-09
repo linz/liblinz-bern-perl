@@ -37,8 +37,9 @@ use Carp;
 use JSON::PP;
 
 our $LoadGpsEnvVar = 'BERNESE_ENV_FILE';
-our $BerneseTimeoutVar = 'BERNESE_BPE_TIMEOUT';
+our $ClientEnvVar = 'CLIENT_ENV';
 our $DefaultLoadGps = '/opt/bernese52/GPS/EXE/LOADGPS.setvar';
+our $BerneseTimeoutVar = 'BERNESE_BPE_TIMEOUT';
 our $AntennaFile    = 'PCV_COD.I08';
 our $ReceiverFile   = 'RECEIVER.';
 
@@ -88,6 +89,7 @@ Returns a hash of the environment that is set.
 sub SetBerneseEnv {
     my ( $loadfile, %override ) = @_;
     $loadfile = $ENV{$LINZ::BERN::BernUtil::LoadGpsEnvVar} if ! $loadfile;
+    $loadfile = $ENV{$LINS::BERN::BernUtil::ClientEnvVar{ if ! $loadfile;
     $loadfile = $LINZ::BERN::BernUtil::DefaultLoadGps if ! $loadfile;
 
     open( my $lf, "<$loadfile" )
