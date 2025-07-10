@@ -89,7 +89,7 @@ Returns a hash of the environment that is set.
 sub SetBerneseEnv {
     my ( $loadfile, %override ) = @_;
     $loadfile = $ENV{$LINZ::BERN::BernUtil::LoadGpsEnvVar} if ! $loadfile;
-    $loadfile = $ENV{$LINS::BERN::BernUtil::ClientEnvVar{ if ! $loadfile;
+    $loadfile = $ENV{$LINZ::BERN::BernUtil::ClientEnvVar} if ! $loadfile;
     $loadfile = $LINZ::BERN::BernUtil::DefaultLoadGps if ! $loadfile;
 
     open( my $lf, "<$loadfile" )
