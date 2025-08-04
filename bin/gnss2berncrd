@@ -1,0 +1,301 @@
+#!/usr/bin/perl
+
+use strict;
+
+use Getopt::Std;
+use JSON;
+use LWP::UserAgent;
+use URI::Escape;
+use LINZ::GNSS::Time qw/parse_gnss_date seconds_decimal_year seconds_yearday/;
+use LINZ::BERN::CrdFile;
+use LINZ::Geodetic::CoordSysList qw/GetCoordSys/;
+
+my $apiurl = $ENV{GNSS_PROCESSING_COORD_API_URL} || 'http://results.prod.gnss-processing.awsint.linz.govt.nz/api/v1/';
+my $timeout = $ENV{GNSS_PROCESSING_COORD_API_TIMEOUT}+0 || 120;
+
+my %opts;
+getopts('vVoMi:f:m:P:R:M:',\%opts);
+
+help(0) if $opts{h};
+help(1) if @ARGV < 2;
+
+my $crdin=$opts{i};
+my $overwrite=$opts{o} || ! $crdin;
+my $flag=$opts{f} || '';
+my $maxdiff=$opts{m} || 0;
+my $period=$opts{P} || 30; # Period for averaging coordinates
+my $mincrd=$opts{R} || 15; # Minimum number of coordinates for accepted average
+my $median=$opts{M} ? 1 : 0; # Use median for averaging coordinates
+my $verbose=$opts{V} ? 2 : $opts{v} ? 1 : 0;
+
+my $crdout=$ARGV[0];
+my $epochstr=$ARGV[1];
+my $strategy = $ARGV[2];
+my $codes;
+if( $#ARGV > 2 )
+{
+    foreach my $code (@ARGV[3..$#ARGV])
+    {
+        if( $code =~ /^[a-zA-Z0-9]{4}$/ )
+        {
+            $codes->{uc($code)}=1;
+        }
+        else
+        {
+            die " Invalid station code $code - must be a valid geodetic code\n";
+        }
+    }
+}
+
+
+$crdin=$crdout if ! $crdin && ! $overwrite;
+
+die " Cannot open input file $crdin\n" if $opts{i} && ! -f $opts{i};
+
+# Determine the start and end epochs for the coordinates.
+
+my ($epoch, $startepoch, $endepoch, $epochyear);
+eval
+{
+    $epoch=parse_gnss_date( $epochstr );
+    my ($year,$dayno) = seconds_yearday( $epoch );
+    $endepoch=sprintf("%d:%03d",$year,$dayno);
+    $epochyear = seconds_decimal_year( $epoch );
+    my $epoch1 = $epoch - $period * 24 * 3600;
+    ($year,$dayno) = seconds_yearday( $epoch1 );
+    $startepoch=sprintf("%d:%03d",$year,$dayno);
+};
+if( $@ )
+{
+    die " $epochstr is not a valid format for the coordinate epoch ($@)\n";
+}
+print(" Using epoch $startepoch to $endepoch for coordinates\n") if $verbose > 1;
+
+# Load the coordinate systems
+
+my $crdapiurl=$ENV{COORDINATE_CONVERSION_API_URL};
+my $nzgd2000_to_itrfxyz;
+my $json=JSON->new;
+my $ua=LWP::UserAgent->new(timeout=>$timeout);
+
+
+my $crd=new LINZ::BERN::CrdFile($crdin );
+
+
+my $usecodes={};
+foreach my $stn ($crd->stations())
+{
+    my $code=uc($stn->code);
+    if( $codes && ! $codes->{$code} )
+    {
+        print " Skipping station $code\n" if $verbose > 1;
+        next;
+    }
+    $usecodes->{$code}=1;
+}
+
+# Get the codes for each strategy
+
+my $coords={};
+my $method = $median ? 'median' : 'mean';
+my $startepochparam = uri_escape($startepoch);
+my $endepochparam = uri_escape($endepoch);
+foreach my $strat (split(/\+/,$strategy))
+{
+    my $url = $apiurl."strategy_coordinates?from_epoch=$startepochparam&to_epoch=$endepochparam&strategy=$strat&method=$method&min_coordinates=$mincrd";
+    print " Using strategy $strat with url $url\n" if $verbose > 1;
+    my $response=$ua->get($url);
+    if( ! $response->is_success )
+    {
+        print("Cannot get strategy coordinates from $url: ".$response->status_line."\n");
+        next;
+    }
+    eval
+    {
+        my $data=$json->decode($response->decoded_content);
+        my $fields = $data->{fields} || [];
+        my $fieldidx = {map {$fields->[$_] => $_} 0.. $#$fields};
+        for my $f (qw/code x y z/)
+        {
+            die " Processing response from $apiurl does not contain field $f\n" if ! exists $fieldidx->{$f};
+        }
+        my $crddata = $data->{data} || [];
+        foreach my $crd (@$crddata)
+        {
+            my $code = uc($crd->[$fieldidx->{code}]);
+            my $xyz = [$crd->[$fieldidx->{x}], $crd->[$fieldidx->{y}], $crd->[$fieldidx->{z}]];
+            $coords->{$code} ||= $xyz;
+            $usecodes->{$code} = 0;
+        }
+    };
+    if( $@ )
+    {
+        die " Error decoding processing response from $apiurl: ".$@."\n";
+    }
+}
+
+my $nmissing=0;
+foreach my $code (keys %{$usecodes})
+{
+    if( $usecodes->{$code} )
+    {
+        print " No coordinates found for station $code\n" if $verbose > 1;
+        $nmissing++;
+    }
+}
+
+my $maxoffset=0.0;
+my $nupdated=0;
+my $nskip=0;
+eval
+{
+    foreach my $stn ($crd->stations())
+    {
+        my $code=uc($stn->code);
+        # print(" Processing $code\n") if $verbose > 1;
+        my $xyz=$coords->{$code};
+        next if ! $xyz;
+        my $xyz0=$stn->xyz();
+        my $offset=($xyz->[0]-$xyz0->[0])**2+($xyz->[1]-$xyz0->[1])**2+($xyz->[2]-$xyz0->[2])**2;
+        $offset=sqrt($offset);
+        if( $maxdiff > 0 && $offset > $maxdiff )
+        {
+            printf(" Offset %.3f for %s too large - not updating\n",$offset,$code) if $verbose;
+            $nskip++;
+            next;
+        }
+        $maxoffset = $offset if $offset > $maxoffset;
+        $stn->xyz([$xyz->[0],$xyz->[1],$xyz->[2]]);
+        $stn->flag($flag) if $flag ne '';
+        printf(" Updating %s with %.3f offset\n", $code, $offset) if $verbose > 1;
+        $nupdated++;
+    }
+
+    $crd->epoch($epoch);
+    $crd->filename($crdout);
+    $crd->write();
+
+    if( $verbose )
+    {
+        print "\n" if $verbose > 1;
+        printf " %d stations updated - max coordinate difference %.4fm\n",
+            $nupdated,$maxoffset;
+        printf " %d stations not updated as offset larger than %.4fm\n",
+            $nskip,$maxdiff if $nskip && $maxdiff > 0;
+        printf " %d requested stations had no coordinates available\n",
+            $nmissing if $nmissing || $verbose > 1;
+    }
+};
+if( $@ )
+{
+    my $msg=$@;
+    $msg=~s/\^\s+at\s+.*\s+line\s+\d+\.$//;
+    print " $msg\n";
+}
+
+sub help
+{
+    my ($brief)=@_;
+    require Pod::Usage;
+    Pod::Usage::pod2usage(
+    {
+        -verbose=>$brief ? 99 : 2,
+        -sections=>'Synopsis',
+        -exitval=>2,
+    });
+}
+
+__DATA__
+
+=head1 Name
+
+gnss2berncrd -  Install gnss processing coords to a Bernese .CRD file
+
+=head1 Synopsis
+
+    gnss2berncrd [options] crd_file epoch strategy
+    gnss2berncrd -h
+
+=head1 Description
+
+Install coordinates from the LINZ GNSS processing
+into a Bernese .CRD file.  Can update an existing coordinate
+file or create a new coordinate file.
+
+=head1 Parameters
+
+Parameters are:
+
+=over
+
+=item crd_file
+
+The name of the output coordinate file.  Also the input file if -i is not 
+specified.  If an input file is specified the -i option, then -o must be included
+to overwrite an existing file.
+
+=item epoch
+
+The epoch at which to convert the NZGD2000 coordinates from the geodetic
+database to ITRF2008 coordinates.  Any of the formats accepted by 
+LINZ::GNSS::Time::parse_gnss_date can be used.
+
+=item strategy
+
+The processing strategy used to calculate the coordinates.  Can be multiple
+prioritized strategies separated by +, eg d02f_52_code_A+d20f_52_code_A+d20f_52_code_B.  
+
+=back
+
+=head1 Options
+
+Valid options are:
+
+=over
+
+=item -i crdfile
+
+Specify an input coordinate file.  Stations will be read from this file, 
+and coordinates found in the processing will be updated.  The output file will be 
+overwritten.  
+
+=item -o
+
+Overwrite an existing .CRD file - ignore any information currently in it.
+
+=item -f flag
+
+Flag to apply to updated stations.  Default is to leave unchanged
+
+=item -m #.###
+
+Maximum acceptable difference in coordinates in metres.  Coordinates
+updates are not applied if the processing coordinate differs from the 
+input file coordinate by more than this amount.
+
+=item -P ##
+
+The number of days over which to average coordinates.  Default is 30 days. 
+Coordinates are averaged over this number of days prior to the specified epoch.
+
+=item -R ##
+
+The minimum number of coordinates required to accept an average.  Default is 15.
+
+=item -M
+
+Use median for averaging coordinates instead of mean.  Default is to use mean.
+
+=item -v
+
+Verbose mode
+
+=item -h
+
+Prints help and exits
+
+
+
+=back
+
+=cut
